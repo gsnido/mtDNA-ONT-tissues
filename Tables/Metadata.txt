@@ -1,0 +1,12 @@
+sample_id,tissue,individual_id,seq
+6226-CT-0010,PFC,a,ont
+6226-CT-0011,heart,b,ont
+6226-CT-0012,muscle,b,ont
+6226-CT-0013,liver,b,ont
+6226-CT-0014,kidney,b,ont
+6226-CT-0015,colon,b,ont
+6226-CT-0016,edta_blood_1,c,ont
+6226-CT-0017,edta_blood_2,d,ont
+6226-CT-0018,cerebellum,b,ont
+SL443862,edta_blood_1,c,illumina
+SL443863,edta_blood_2,d,illumina

@@ -1,0 +1,864 @@
+---
+title: "Mitochondrial deletions in human tissues"
+author: "Gonzalo S. Nido"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        number_sections: false
+        theme: united
+        highlight: tango
+        code_folding: "hide"
+---
+
+<!--
+To convert Markdown document to HTML,
+R -e "rmarkdown::render('mito_analyses.Rmd')"
+-->
+
+```{r global_options, include=FALSE, cache=FALSE}
+require("knitr")
+knitr::opts_chunk$set(fig.path = 'Figs_Rmd/', fig.height = 5, fig.width = 5,
+                      warning = FALSE, message = FALSE,
+                      cache = TRUE, cache.lazy = FALSE, cache.extra = set.seed(1))
+require("kableExtra")
+require("DT")
+require("tidyverse")
+require("cowplot")
+theme_set(theme_cowplot())
+require("ggrepel")
+# require("broom")
+# require("ggbeeswarm")
+# require("GGally")
+# library("GenomicFeatures")
+# require("ggfortify")
+# require("Biobase")
+# require("RColorBrewer")
+# require("ComplexHeatmap")
+# require("parallel")
+# require("ggpubr")
+# #require("corrplot")
+# #require("colorspace")
+
+select <- dplyr::select
+filter <- dplyr::filter
+mutate <- dplyr::mutate
+combine <- dplyr::combine
+
+source("./functions.R")
+
+# Create directories if they do not exist
+data_directory <- "./Data"
+dir.create(data_directory, showWarnings = FALSE)
+rdata_directory <- "./RData"
+dir.create(rdata_directory, showWarnings = FALSE)
+tables_directory <- "./Tables"
+dir.create(tables_directory, showWarnings = FALSE)
+figs_rmd_directory <- "./Figs_Rmd"
+dir.create(figs_rmd_directory, showWarnings = FALSE)
+
+# gtf <- "./Data/gencode.v35.annotation.gtf.gz"
+# txdb.filename <- gsub("gtf", "sqlite", gtf)
+# tx2gene.filename <- gsub("gtf", "tx2gene.csv", gtf)
+# geneNames.filename <- "./RData/geneNames.Rds"
+
+options(readr.show_col_types=FALSE)
+
+set.seed(1)
+
+```
+
+## Upstream methods
+
+### Long-reads sequencing (ONT)
+
+For the ONT samples, (Unmodified) raw sequences were extracted from fast5
+files, trimmed using __chopper__ to remove low quality bases from the reads.
+Alignments were carried out using __minimap2__ against the mitochondrial
+chromosome (rCRS) and the chr22 autosome. Due to the circular nature of the
+mitochondrial chromosome, reads were aligned in parallel to an alternative
+version of the rCRS whose start-end positions were shifted by 8,000 bp. This
+allowed long reads spanning over the arbitrary start-end regions in the rCRS to
+be properly aligned.
+
+SNV calling was carried out using GATK __Mutect2__ in mitochondria mode for
+each of the three alignments (rCRS, shifted rCRS and chr22). The variants in
+the VCF resulting from the alignments of long reads against the 8,000
+bp-shifted rCRS were lifted over to the original rCRS coordinates. A final set
+of mtDNA variants was obtained by combining variants within positions
+4,000-11,999 from the standard rCRS reference, and within 1-3,999 and
+12,000-16,569 from the alignment against the 8,000 bp-shifted reference.
+__Haplocheck__ was used to test for haplotype contamination in the resulting
+filtered mtDNA variants.
+
+To use as a nuclear control, we used the same methodology to call SNVs in a
+short region from the chr22 (chr22:20,000,000-20,100,000).
+
+To obtain deletions at the single-read level from the ONT data, we parsed the
+sam CIGAR strings in the mitomap2 alignments using a custom script.
+
+### Illumina samples
+
+The two EDTA blood samples sequenced using Illumina NGS technology were aligned
+against the whole genome using the GATK recommended guidelines, including the
+mitochondrial-specific pipeline for variant calling.
+
+
+
+## Sample information
+
+```{r eval=FALSE, echo=FALSE}
+Metadata <- readODS::read_ods("../sample_metadata.ods")
+write.table(Metadata, "./Tables/Metadata.txt", sep = ",", row.names = FALSE, quote = FALSE)
+```
+
+Metadata with sample information:
+
+```{r}
+Metadata <- read_csv("./Tables/Metadata.txt", col_types = "cccc") %>%
+    mutate(tissue = ifelse(str_starts(tissue, "edta_blood"), "edta_blood", tissue)) %>%
+    mutate(platform = seq) %>%
+    select(-seq)
+Metadata %>%
+    arrange(platform, tissue) %>%
+    kable(caption = "Sample overview") %>% kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+NOTE: sample from PFC is from a different individual.
+
+
+
+
+## General sequencing QC overview
+
+### mtDNA sequencing coverage
+
+The following plot shows the rCRS coverage for all ONT samples (including those
+belonging to different individuals and tissues). Different colours correspond
+to different individuals.
+
+```{r, fig.height=5, fig.width=9}
+depthFiles1 <- paste0("../results/depth/", filter(Metadata, platform == "ont")$sample_id, "_chrM.txt")
+names(depthFiles1) <- filter(Metadata, platform == "ont")$sample_id
+#all(file.exists(depthFiles1))
+
+depthFiles2 <- paste0("../results/depth/", filter(Metadata, platform == "ont")$sample_id, "_chrM_shifted.txt")
+names(depthFiles2) <- filter(Metadata, platform == "ont")$sample_id
+#all(file.exists(depthFiles2))
+
+depthFiles22 <- paste0("../results/depth/", filter(Metadata, platform == "ont")$sample_id, "_chr22.txt")
+names(depthFiles22) <- filter(Metadata, platform == "ont")$sample_id
+#all(file.exists(depthFiles22))
+
+
+## COVERAGE / SUMMARY STATS
+Cov1 <- lapply(names(depthFiles1), function(sid) {
+    read_tsv(depthFiles1[sid], col_names = FALSE, col_types = "cii") %>%
+        mutate(sample_id = sid) %>%
+        select(Pos = X2, Cov = X3, sample_id) %>%
+        filter(Pos >= 4000, Pos < 12000)
+}) %>% Reduce("bind_rows", .)
+Cov2 <- lapply(names(depthFiles2), function(sid) {
+    read_tsv(depthFiles1[sid], col_names = FALSE, col_types = "cii") %>%
+        mutate(sample_id = sid) %>%
+        select(Pos = X2, Cov = X3, sample_id) %>%
+        filter(Pos >= 4000, Pos < 12569) %>%
+        mutate(Pos = sapply(Pos, us8k))
+}) %>% Reduce("bind_rows", .)
+Cov <- bind_rows(Cov1, Cov2) %>% arrange(Pos)
+rm(Cov1, Cov2)
+invisible(gc())
+
+Labels <- left_join(Cov, Metadata, by = join_by(sample_id)) %>%
+    group_by(tissue) %>%
+    filter(Pos == 16569) %>%
+    ungroup()
+Plot1 <- left_join(Cov, Metadata, by = join_by(sample_id)) %>%
+    ggplot() +
+    geom_smooth(aes(x = Pos, y = Cov, group = sample_id, colour = individual_id), 
+        method = "gam", formula = y ~ s(x, bs = "cs", fx = TRUE, k = 100), se = FALSE) +
+    geom_text_repel(data = Labels, aes(x = Pos, y = Cov, label = tissue),
+        nudge_x = 1000, direction = "y", 
+        box.padding = 0.5, point.padding = 0.5, 
+        segment.color = "grey50", size = 5) +
+    scale_y_log10() +
+    theme_cowplot() +
+    theme(legend.position = "none") +
+    ggtitle("Absolute coverage rCRS")
+Plot1
+
+# invisible(svg("./Figs/coverage_ONT.svg", height = 6, width = 12))
+# Plot1
+# invisible(dev.off())
+invisible(png("./Figs/coverage_ONT_all.png", height = 1000, width = 2000, res = 150))
+Plot1
+invisible(dev.off())
+```
+
+The high levels of coverage seen in the the mitochondrial chromosome contrast
+with the nuclear genome. Based on the region chr22:20,000,000-20,100,000, the
+nuclear genome has a coverage at least 2 orders of magnitude lower.
+
+In addition, the nuclear coverage is much more similar across different tissues
+than the coverage for the mitochondrial genome, which exhibits very large
+differences (e.g., ~400X in EDTA blood vs ~200,000X in heart tissue).
+
+The following table display summary statistics for both the rCRS coverage (top)
+and a small region in chr22 (chr22:20,000,000-20,100,000, bottom).
+
+```{r}
+Cov22 <- lapply(names(depthFiles22), function(sid) {
+    read_tsv(depthFiles22[sid], col_names = FALSE, col_types = "cii") %>%
+        mutate(sample_id = sid) %>%
+        select(Pos = X2, Cov = X3, sample_id)
+}) %>% Reduce("bind_rows", .)
+
+summTable <- left_join(Cov, Metadata, by = join_by(sample_id)) %>%
+    group_by(sample_id) %>%
+    summarise(mean_cov = round(mean(Cov)),
+              stdev_cov = round(sd(Cov)),
+              perc_5 = round(quantile(Cov, 0.05)),
+              perc_25 = round(quantile(Cov, 0.25)),
+              median_cov = round(median(Cov)), 
+              perc_75 = round(quantile(Cov, 0.75)),
+              perc_95 = round(quantile(Cov, 0.95))) %>%
+    ungroup() %>%
+    left_join(Metadata, by = join_by(sample_id)) %>%
+    select(tissue, individual_id, sample_id, mean_cov, stdev_cov, median_cov, starts_with("perc"))
+
+summTable22 <- left_join(Cov22, Metadata, by = join_by(sample_id)) %>%
+    group_by(sample_id) %>%
+    summarise(mean_cov = round(mean(Cov)),
+              stdev_cov = round(sd(Cov)),
+              perc_5 = round(quantile(Cov, 0.05)),
+              perc_25 = round(quantile(Cov, 0.25)),
+              median_cov = round(median(Cov)), 
+              perc_75 = round(quantile(Cov, 0.75)),
+              perc_95 = round(quantile(Cov, 0.95))) %>%
+    ungroup() %>%
+    left_join(Metadata, by = join_by(sample_id)) %>%
+    select(tissue, individual_id, sample_id, mean_cov, stdev_cov, median_cov, starts_with("perc"))
+
+
+summTable %>%
+    kable(caption = "Summary statistics rCRS coverage per sample") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+summTable22 %>%
+    kable(caption = "Summary statistics chr22:20,000,000-20,100,000 coverage per sample") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+This data can be used to estimate the a relative copy number across tissue, by
+normalising mtDNA coverage by nuclear coverage. This represents only a relative
+copy number estimate of the __average in the tissue__ (i.e., different cell
+types within a tissue have different mtDNA copy numbers).
+
+```{r}
+summTable_ont <- summTable %>% select(tissue, individual_id, sample_id, median_cov_MT = median_cov) %>%
+    full_join(summTable22 %>% select(tissue, individual_id, sample_id, median_cov_chr22 = median_cov)) %>%
+    mutate(relative_copynumber = round(median_cov_MT/median_cov_chr22))
+summTable_ont %>% 
+    kable(caption = "Relative mtDNA copy number based on avg. depth of coverage") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+Is the mtDNA copy number estimation similar in Illumina-based sequencing? We
+can use the samples for which we have both ONT and Illumina to investigate this
+question.
+
+
+```{r}
+depthFiles_wgs_1 <- paste0("../results/depth/", filter(Metadata, platform == "illumina")$sample_id, "_chrM.txt")
+names(depthFiles_wgs_1) <- filter(Metadata, platform == "illumina")$sample_id
+#all(file.exists(depthFiles_wgs_1))
+
+depthFiles_wgs_2 <- paste0("../results/depth/", filter(Metadata, platform == "illumina")$sample_id, "_chrM_shifted.txt")
+names(depthFiles_wgs_2) <- filter(Metadata, platform == "illumina")$sample_id
+#all(file.exists(depthFiles_wgs_2))
+
+depthFiles_wgs_22 <- paste0("../results/depth/", filter(Metadata, platform == "illumina")$sample_id, "_chr22.txt")
+names(depthFiles_wgs_22) <- filter(Metadata, platform == "illumina")$sample_id
+#all(file.exists(depthFiles_wgs_22))
+
+
+## COVERAGE / SUMMARY STATS
+Cov_wgs_1 <- lapply(names(depthFiles_wgs_1), function(sid) {
+    read_tsv(depthFiles_wgs_1[sid], col_names = FALSE, col_types = "cii") %>%
+        mutate(sample_id = sid) %>%
+        select(Pos = X2, Cov = X3, sample_id) %>%
+        filter(Pos >= 4000, Pos < 12000)
+}) %>% Reduce("bind_rows", .)
+Cov_wgs_2 <- lapply(names(depthFiles_wgs_2), function(sid) {
+    read_tsv(depthFiles_wgs_2[sid], col_names = FALSE, col_types = "cii") %>%
+        mutate(sample_id = sid) %>%
+        select(Pos = X2, Cov = X3, sample_id) %>%
+        filter(Pos >= 4000, Pos < 12569) %>%
+        mutate(Pos = sapply(Pos, us8k))
+}) %>% Reduce("bind_rows", .)
+Cov_wgs <- bind_rows(Cov_wgs_1, Cov_wgs_2) %>% arrange(Pos)
+rm(Cov_wgs_1, Cov_wgs_2)
+invisible(gc())
+Cov_wgs_22 <- lapply(names(depthFiles_wgs_22), function(sid) {
+    read_tsv(depthFiles_wgs_22[sid], col_names = FALSE, col_types = "cii") %>%
+        mutate(sample_id = sid) %>%
+        select(Pos = X2, Cov = X3, sample_id)
+}) %>% Reduce("bind_rows", .)
+
+summTable_wgs <- left_join(Cov_wgs, Metadata, by = join_by(sample_id)) %>%
+    group_by(sample_id) %>%
+    summarise(mean_cov = round(mean(Cov)),
+              stdev_cov = round(sd(Cov)),
+              perc_5 = round(quantile(Cov, 0.05)),
+              perc_25 = round(quantile(Cov, 0.25)),
+              median_cov = round(median(Cov)), 
+              perc_75 = round(quantile(Cov, 0.75)),
+              perc_95 = round(quantile(Cov, 0.95))) %>%
+    ungroup() %>%
+    left_join(Metadata, by = join_by(sample_id)) %>%
+    select(tissue, individual_id, sample_id, mean_cov, stdev_cov, median_cov, starts_with("perc"))
+
+summTable_wgs_22 <- left_join(Cov_wgs_22, Metadata, by = join_by(sample_id)) %>%
+    group_by(sample_id) %>%
+    summarise(mean_cov = round(mean(Cov)),
+              stdev_cov = round(sd(Cov)),
+              perc_5 = round(quantile(Cov, 0.05)),
+              perc_25 = round(quantile(Cov, 0.25)),
+              median_cov = round(median(Cov)), 
+              perc_75 = round(quantile(Cov, 0.75)),
+              perc_95 = round(quantile(Cov, 0.95))) %>%
+    ungroup() %>%
+    left_join(Metadata, by = join_by(sample_id)) %>%
+    select(tissue, individual_id, sample_id, mean_cov, stdev_cov, median_cov, starts_with("perc"))
+
+summTable_illumina <- summTable_wgs %>% select(tissue, individual_id, sample_id, median_cov_MT = median_cov) %>%
+    full_join(summTable_wgs_22 %>% select(tissue, individual_id, sample_id, median_cov_chr22 = median_cov)) %>%
+    mutate(relative_copynumber = round(median_cov_MT/median_cov_chr22))
+
+bind_rows(summTable_illumina, summTable_ont) %>% filter(tissue == "edta_blood") %>%
+    left_join(Metadata %>% select(sample_id, platform)) %>%
+    select(individual_id, platform, cov_MT = median_cov_MT, cov_chr22 = median_cov_chr22, copy_nr = relative_copynumber) %>%
+    pivot_wider(names_from = platform, values_from = c(cov_MT, cov_chr22, copy_nr)) %>%
+    kable(caption = "Relative mtDNA copy number in 2 EDTA blood samples (ONT and Illumina)") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+## SNVs
+
+Due to a higher error rate in long-read technology (at least compared to
+Illumina NGS sequencing technology), it is not possible to confidently estimate
+mutational loads. However, it is still possible to study relative mutational
+loads across tissues. Here, we define "mutational load" as the number of
+single-base nucletide mismatches in a fixed length, e.g., 10 SNVs per 100
+bases.
+
+### Sequencing error
+
+First, we can compare the error rate of ONT and Illumina sequencing platfoms by
+leveraging the EDTA blood samples from the same 2 individuals. The sequencing
+error rate is here calculated using the chr22:20,000,000-20,100,000 region, which
+should only exhibit diploid genotypes. Only positions with a coverage within two
+standard deviations of the mean coverage for the sample are considered. We then
+calculate the number of erroneous calls as the bases that are different from
+the genotype.
+
+The following plots represent this error along the region studied for the four
+samples (top samples, ONT, bottom samples, Illumina). Missing regions
+correspond to low coverage. The discrete nature of the coverage results
+in the "steps" seen in the plots.
+
+In the case of the Illumina samples, some small regions seem to be problematic
+for both samples, suggesting sequence composition playing a role.
+
+```{r, fig.height=6, fig.width=9}
+perNucFiles <- paste0("../results/depth/", filter(Metadata, tissue == "edta_blood")$sample_id, "_per_nuc_depth_chr22.txt")
+names(perNucFiles) <- filter(Metadata, tissue == "edta_blood")$sample_id
+#all(file.exists(perNucFiles))
+
+
+perNucCov <- lapply(names(perNucFiles), function(sid) {
+    read_tsv(perNucFiles[sid], col_select = c(1,2,4,6,8,10),
+             c("seq", "pos", "a", "A", "c", "C", "g", "G", "t", "T")) %>%
+        mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .)
+perNucCov_filt <- perNucCov %>% mutate(Cov = A + C + G + T) %>%
+    group_by(sample_id) %>%
+    mutate(mean_cov = mean(Cov), std_cov_2 = 2*sd(Cov)) %>%
+    mutate(keep = ifelse(Cov > (mean_cov - std_cov_2) & Cov < (mean_cov + std_cov_2), TRUE, FALSE)) %>%
+    filter(keep, Cov > 0) %>%
+    select(-mean_cov, -std_cov_2, -keep) %>%
+    ungroup()
+
+errors_per_base <- perNucCov_filt %>% 
+    pivot_longer(A:T, names_to = "base", values_to = "count") %>%
+    arrange(sample_id, pos, desc(count)) %>%
+    group_by(sample_id, pos) %>%
+    mutate(hom_GT = base[1], het_GT = ifelse(count[2] > 0, base[2], NA)) %>%
+    mutate(hom_right = count[1]) %>%
+    mutate(het_right = ifelse(!is.na(het_GT), min(Cov[1]/2,count[1])+min(Cov[1]/2,count[2]), NA)) %>%
+    select(sample_id, pos, Cov, hom_right, het_right) %>%
+    distinct() %>%
+    mutate(right = pmax(hom_right, het_right, na.rm = TRUE)) %>%
+    mutate(wrong = Cov - right) %>%
+    select(-hom_right, -het_right)
+
+Plot3 <- errors_per_base %>%
+    ggplot(aes(x = pos, y = wrong/Cov)) +
+    geom_point(size = 1) +
+    facet_grid(sample_id ~ .)
+
+Plot3
+
+invisible(png("./Figs/GT_dispersion.png", height = 2000, width = 6000, res = 150))
+Plot3
+invisible(dev.off())
+```
+
+The following table shows the error rate calculated based on this region.
+
+```{r}
+errors_per_base %>% group_by(sample_id) %>%
+    summarise(error_rate = formatC(sum(wrong)/sum(Cov), digits = 2)) %>%
+    left_join(Metadata %>% select(sample_id, platform)) %>%
+    kable(caption = "Error rate in chr22:20,000,000-20,100,000") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+### Mutational load
+
+Due to the high error rate of the ONT technology, it is not possible to
+calculate an absolute mutational load in the mtDNA at the single molecule
+level. However, it is still possible to assess differences in mutational load
+across tissues.
+
+To estimate the mutational load M, we calculate the proportion of basecalls per
+position that are different from the genotype at the position. Then, we
+logit-transform these values (which would be ranging from 0 to 1) so that they
+are normally distributed M = log2(e/(1-e)).
+
+```{r, fig.height = 4, fig.width = 7}
+perNucFiles2 <- paste0("../results/depth/", filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, "_per_nuc_depth_chrM.txt")
+names(perNucFiles2) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+#all(file.exists(perNucFiles2))
+
+
+perNucCov2 <- lapply(names(perNucFiles2), function(sid) {
+    read_tsv(perNucFiles2[sid], col_select = c(1,2,4,6,8,10),
+             c("seq", "pos", "a", "A", "c", "C", "g", "G", "t", "T")) %>%
+        mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .) %>%
+    mutate(Cov = A + C + G + T)
+
+mut_load <- perNucCov2 %>% 
+    pivot_longer(A:T, names_to = "base", values_to = "count") %>%
+    arrange(sample_id, pos, desc(count)) %>%
+    group_by(sample_id, pos) %>%
+    mutate(hom_GT = base[1]) %>%
+    mutate(right = count[1]) %>%
+    select(sample_id, pos, Cov, right) %>%
+    distinct() %>%
+    filter(pos != 3107) %>%
+    left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id)) %>%
+    mutate(mut_load = (Cov - right)/Cov)
+mut_load$mut_load <- transf.betareg(mut_load$mut_load)
+mut_load$M <- log2(mut_load$mut_load / (1 - mut_load$mut_load))
+
+Plot4_dist <- mut_load %>% ggplot(aes(x = M)) + 
+    geom_density(aes(colour = tissue))
+
+#Plot4 <- mut_load %>%
+#    ggplot(aes(x = pos, y = M)) +
+#    geom_point() +
+#    facet_grid(sample_id ~ .)
+
+Plot4_dist
+#Plot4
+
+invisible(png("./Figs/MT_M_dist.png", height = 1000, width = 1500, res = 150))
+Plot4_dist
+invisible(dev.off())
+
+#invisible(png("./Figs/MT_M_load.png", height = 2000, width = 6000, res = 150))
+#Plot4
+#invisible(dev.off())
+```
+
+However, this is just an average mutational load in the entire mtDNA
+population. We can now focus on the distribution of "errors" per read, i.e.,
+the proportion of mismatches:matches in the read alignment. We use a logit
+transformation of the proportion of mismatches in the read: 
+
+M = logit(mismatches/(mismatches+matches))
+
+```{r, fig.height=4, fig.width=7}
+snvsPerReadFiles <- paste0("../results/snvs_per_read/", filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, ".tsv")
+names(snvsPerReadFiles) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+#all(file.exists(snvsPerReadFiles))
+
+snvsPerRead <- lapply(names(snvsPerReadFiles), function(sid) {
+                          message(sid)
+    read_tsv(snvsPerReadFiles[sid], col_types = "cii") %>%
+    group_by(read_id) %>%
+    slice_max(matches, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .) %>%
+    left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id)) %>%
+    mutate(mut_load = mismatches / (matches + mismatches))
+
+snvsPerRead$mut_load <- transf.betareg(snvsPerRead$mut_load)
+snvsPerRead$M <- log2(snvsPerRead$mut_load / (1 - snvsPerRead$mut_load))
+
+Plot5 <- snvsPerRead %>% filter(M > -10) %>%
+    ggplot() +
+    geom_density(aes(x = M, colour = tissue)) +
+    geom_vline(xintercept = -2.8, linetype = 2)
+#Plot6 <- snvsPerRead %>% filter(M > -10) %>% 
+#    ggplot() +
+#    geom_point(aes(x = M, y = matches + mismatches)) +
+#    facet_grid(sample_id~.)
+
+Plot5
+
+invisible(png("./Figs/MT_M_perRead_dist.png", height = 1000, width = 1500, res = 150))
+Plot5
+invisible(dev.off())
+```
+
+Using __M__ as a proxy for the mutational load in the mtDNA sequence that was
+the template for the read, we observerve that the mtDNA molecules exhibit a
+marked bimodal distribution. A population of mtDNA molecules harbours more
+mutations than the prevailing mtDNA population. The threshold seems to be
+around 12% error rate (M = -2.8). See dashed vertical line above.
+
+Strikingly, the relative proportions of these mtDNA species are highly
+tissue-specific.
+
+```{r}
+snvsPerRead %>%
+    mutate(high_mut_load = ifelse(M > -2.8, TRUE, FALSE)) %>%
+    group_by(sample_id, tissue) %>%
+    summarise(N = n(), nb_high_mut = sum(high_mut_load), prop_high_mut = nb_high_mut / N, .groups = "drop") %>%
+    mutate(prop_high_mut = formatC(prop_high_mut, digits = 2)) %>%
+    kable(caption = "Relative proportions of high-mutant mtDNA reads") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+These highly-mutated mtDNA sequences tend to be smaller than the prevailing
+mtDNA population.
+The following table tests for each sample (tissue) the sizes of the two groups
+of mtDNA molecules, those with more than 12% mutational load and those with
+less.
+
+```{r, fig.height=5, fig.width=7}
+gc_mt <- left_join(snvsPerRead,
+lapply(unique(snvsPerRead$sample_id), function(sid) {
+    #message(sid)
+    read_tsv(paste0("/data1/romain/ont/results/gc_content/", sid, "_chrM.tsv"), col_types = "cd") %>%
+    mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .), by = join_by(read_id, sample_id))
+
+Data <- gc_mt %>%
+    mutate(high_mut_load = as.integer(ifelse(M > -2.8, 1, 0))) %>%
+    mutate(len = matches + mismatches)
+
+lapply(unique(snvsPerRead$sample_id), function(sid) {
+    glm(high_mut_load ~ len, data = filter(Data, sample_id == sid), family = "binomial") %>%
+        broom::tidy() %>% filter(term != "(Intercept)") %>%
+        mutate(sample_id = sid) %>%
+        select(sample_id, everything())
+}) %>% Reduce("bind_rows", .) %>%
+    select(sample_id, estimate, statistic, p.value) %>%
+    mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
+    kable(caption = "Association between read length and highly-mutated mtDNA") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+Plot7 <- Data %>% ggplot(aes(x = as.factor(high_mut_load), y = len)) +
+    #geom_violin() +
+    geom_boxplot(outlier.shape = NA) +
+    facet_grid(~tissue)
+
+Plot7
+
+invisible(png("./Figs/MT_mutator_species.png", height = 1000, width = 1500, res = 150))
+Plot7
+invisible(dev.off())
+```
+
+It is unlikely that this is a sequencing artifact, since different tissues present
+different proportions of these "high mutator" mtDNA species. To confirm this, we
+can test whether chr22 also has a similar bimodal distribution.
+
+```{r, fig.width=7, fig.height=5}
+snvsPerReadFiles_chr22 <- paste0("../results/snvs_per_read/", 
+                                 filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+                                 "_chr22.tsv")
+names(snvsPerReadFiles_chr22) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+#all(file.exists(snvsPerReadFiles_chr22))
+
+snvsPerRead_chr22 <- lapply(names(snvsPerReadFiles_chr22), function(sid) {
+                          message(sid)
+    read_tsv(snvsPerReadFiles_chr22[sid], col_types = "cii") %>%
+    mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .) %>%
+    mutate(mut_load = mismatches / (matches + mismatches))
+
+snvsPerRead_chr22$mut_load <- transf.betareg(snvsPerRead_chr22$mut_load)
+snvsPerRead_chr22$M <- log2(snvsPerRead_chr22$mut_load / (1 - snvsPerRead_chr22$mut_load))
+
+Plot8 <- snvsPerRead_chr22 %>%
+    filter(M > -10) %>%
+    ggplot() +
+    geom_density(aes(x = M, colour = sample_id))
+    #geom_vline(xintercept = -2.8, linetype = 2)
+
+Plot8
+
+invisible(png("./Figs/chr22_M_perRead_dist.png", height = 1000, width = 1500, res = 150))
+Plot8
+invisible(dev.off())
+```
+
+We also test now whether the GC content is different between these different
+mtDNA populations.
+
+```{r, fig.width=7, fig.height=5}
+lapply(unique(snvsPerRead$sample_id), function(sid) {
+    glm(high_mut_load ~ gc_proportion, data = filter(Data, sample_id == sid), family = "binomial") %>%
+        broom::tidy() %>% filter(term != "(Intercept)") %>%
+        mutate(sample_id = sid) %>%
+        select(sample_id, everything())
+}) %>% Reduce("bind_rows", .) %>%
+    select(sample_id, estimate, statistic, p.value) %>%
+    mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
+    kable(caption = "Association between GC proportion and highly-mutated mtDNA") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+Plot9 <- Data %>% ggplot(aes(x = as.factor(high_mut_load), y = gc_proportion)) +
+    geom_boxplot(outlier.shape = NA) +
+    facet_grid(~tissue)
+
+Plot9
+
+invisible(png("./Figs/MT_mutator_species_GC_content.png", height = 1000, width = 1500, res = 150))
+Plot9
+invisible(dev.off())
+```
+
+
+
+
+```{r}
+## varFiles <- paste0("../results/", filter(Metadata, platform == "ont")$sample_id, "_chrM_combined_filt_splt.vcf")
+## names(varFiles) <- filter(Metadata, platform == "ont")$sample_id
+## 
+## #varFiles1 <- paste0("../results/", filter(Metadata, platform == "ont")$sample_id, "_chrM_variants.txt")
+## #names(varFiles1) <- filter(Metadata, platform == "ont")$sample_id
+## 
+## depthFiles1 <- paste0("../results/depth/", filter(Metadata, platform == "ont")$sample_id, "_chrM.txt")
+## names(depthFiles1) <- filter(Metadata, platform == "ont")$sample_id
+## 
+## #all(file.exists(varFiles1))
+## all(file.exists(depthFiles1))
+## 
+## #varFiles2 <- paste0("../results/", filter(Metadata, platform == "ont")$sample_id, "_chrM_shifted_variants.txt")
+## #names(varFiles2) <- filter(Metadata, platform == "ont")$sample_id
+## 
+## depthFiles2 <- paste0("../results/depth/", filter(Metadata, platform == "ont")$sample_id, "_chrM_shifted.txt")
+## names(depthFiles2) <- filter(Metadata, platform == "ont")$sample_id
+## 
+## #all(file.exists(varFiles2))
+## all(file.exists(depthFiles2))
+## 
+## # pos 8001 in chrM corresponds to pos 1 in shifted chrM
+## # this function transforms coordinate from original chrM into the shifted
+## # reference
+## s8k <-function(x) {
+##     if (x > 16569) return(NA)
+##     if (x < 1) return(NA)
+##     if (x > 8000) return(x - 8000)
+##     if (x <= 8000) return(x + 8569)
+##     return(NA)
+## }
+## us8k <-function(x) {
+##     if (x > 16569) return(NA)
+##     if (x < 1) return(NA)
+##     if (x < 8570) return(x + 8000)
+##     if (x >= 8570) return(x - 8569)
+##     return(NA)
+## }
+## 
+## # From chatGPT, which is smarter than me
+## # UNTESTED
+## shifted_to_rcrs <- function(positions, shift = 8000, genome_length = 16569) {
+##   zero_based_positions <- positions - 1
+##   rcrs_positions <- (zero_based_positions + shift) %% genome_length
+##   return(rcrs_positions + 1)
+## }
+## 
+## 
+## 
+## ## COVERAGE / SUMMARY STATS
+## Cov1 <- lapply(names(depthFiles1), function(sid) {
+##     read_tsv(depthFiles1[sid], col_names = FALSE, col_types = "cii") %>%
+##         mutate(sample_id = sid) %>%
+##         select(Pos = X2, Cov = X3, sample_id) %>%
+##         filter(Pos >= 4000, Pos < 12000)
+## }) %>% Reduce("bind_rows", .)
+## Cov2 <- lapply(names(depthFiles2), function(sid) {
+##     read_tsv(depthFiles1[sid], col_names = FALSE, col_types = "cii") %>%
+##         mutate(sample_id = sid) %>%
+##         select(Pos = X2, Cov = X3, sample_id) %>%
+##         filter(Pos >= 4000, Pos < 12569) %>%
+##         mutate(Pos = sapply(Pos, us8k))
+## }) %>% Reduce("bind_rows", .)
+## Cov <- bind_rows(Cov1, Cov2) %>% arrange(Pos)
+## rm(Cov1, Cov2)
+## invisible(gc())
+## 
+## 
+## #svg("./Figs/coverage_ONT.svg", height = 6, width = 12)
+## invisible(png("./Figs/coverage_ONT.png", height = 1000, width = 2000, res = 150))
+## left_join(Cov, Metadata, by = join_by(sample_id)) %>%
+##     filter(tissue != "PFC") %>%
+##     ggplot(aes(x = Pos, y = Cov, colour = tissue)) +
+##     #geom_point() +
+##     geom_smooth(method = "gam", formula = y ~ s(x, bs = "cs", fx = TRUE, k = 100)) +
+##     scale_y_log10() +
+##     theme_cowplot()
+## invisible(dev.off())
+## 
+## summTable <- left_join(Cov, Metadata, by = join_by(sample_id)) %>%
+##     filter(tissue != "PFC") %>%
+##     group_by(tissue) %>%
+##     summarise(perc_5 = round(quantile(Cov, 0.05)),
+##               perc_25 = round(quantile(Cov, 0.25)),
+##               median_cov = round(median(Cov)), 
+##               perc_75 = round(quantile(Cov, 0.75)),
+##               perc_95 = round(quantile(Cov, 0.95)))
+## write.table(summTable, "./Tables/coverage_table.txt", sep = ",", quote = FALSE, row.names = FALSE)
+## ##sjPlot::tab_mod(variable, file = "table.docx")
+## 
+## 
+## 
+## #########################
+## ##### READ VARIANTS #####
+## #########################
+## 
+## require("vcfR")
+## 
+## # VCF files generated using Mutect2 are already fixed in terms of coordinates
+## chrM_vars <- lapply(names(varFiles), function(sid) {
+##     File <- varFiles[sid]
+##     read_tsv(File, col_types = "cciccdcdcdiiiid") %>% filter(Filter == "PASS") %>%
+##         filter(Pos >= 4000, Pos < 12000) %>%
+##         filter(Type %in% c(1,2)) %>%
+##         mutate(sample_id = sid) %>%
+##         select(-ID, -Filter)
+## }) %>% Reduce("bind_rows", .)
+## 
+## 
+## 
+## 
+## 
+## # read chrM pos. 4000-11999 from normal chrM alignments
+## chrM_vars <- lapply(names(varFiles1), function(sid) {
+##     File <- varFiles1[sid]
+##     read_tsv(File, col_types = "cciccdcdcdiiiid") %>% filter(Filter == "PASS") %>%
+##         filter(Pos >= 4000, Pos < 12000) %>%
+##         filter(Type %in% c(1,2)) %>%
+##         mutate(sample_id = sid) %>%
+##         select(-ID, -Filter)
+## }) %>% Reduce("bind_rows", .)
+## 
+## # read chrM pos. 1-3999 and 12000-16569 from alignments to shifted reference,
+## # which corresponds to 8570-12568 and 4000-8569
+## chrM_shift_vars <- lapply(names(varFiles2), function(sid) {
+##     File <- varFiles2[sid]
+##     read_tsv(File, col_types = "cciccdcdcdiiiid") %>% filter(Filter == "PASS") %>%
+##         filter(Pos >= 4000, Pos < 12569) %>%
+##         filter(Type %in% c(1,2)) %>%
+##         mutate(sample_id = sid) %>%
+##         mutate(Pos = sapply(Pos, us8k)) %>%
+##         select(-ID, -Filter)
+## }) %>% Reduce("bind_rows", .)
+## 
+## all_vars <- bind_rows(chrM_vars, chrM_shift_vars) %>%
+##     left_join(Metadata, by = join_by(sample_id)) %>%
+##     select(tissue, 
+## all_vars
+## rm(chrM_vars, chrM_shift_vars)
+## invisible(gc())
+## 
+## all_vars %>% filter(tissue %in% c("edta_blood_1", "edta_blood_2"), Type == 1) %>%
+##     arrange(Pos)
+## all_vars %>% filter(tissue %in% c("edta_blood_1", "edta_blood_2"), Type == 2) %>%
+##     filter(Pos == 6)
+##     arrange(Pos)
+
+
+```
+
+
+## Deletions
+
+### Distribution of ONT read lengths
+
+A first rough estimate of the presence and abundance of deletions is the length
+of the mtDNA-aligned reads.
+
+The density plots show the distribution of ONT read lengths aligned to either
+the mtDNA (rCRS) or the chr22. The colours are the same used in the previous
+plot. The vertical dashed line indicates the rCRS length (16,569).
+
+```{r, fig.width=6, fig.height=7, echo=FALSE}
+lenFiles1 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chrM.txt")
+names(lenFiles1) <- filter(Metadata, platform == "ont")$sample_id
+lenFiles2 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chrM_shifted.txt")
+names(lenFiles2) <- filter(Metadata, platform == "ont")$sample_id
+lenFiles22 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chr22.txt")
+names(lenFiles22) <- filter(Metadata, platform == "ont")$sample_id
+
+Len1 <- lapply(names(lenFiles1), function(sid) {
+    read_tsv(lenFiles1[sid], col_names = FALSE, col_types = "ci") %>%
+        mutate(sample_id = sid) %>%
+        select(readname = X1, readlength = X2, sample_id)
+}) %>% Reduce("bind_rows", .)
+Len2 <- lapply(names(lenFiles2), function(sid) {
+    read_tsv(lenFiles1[sid], col_names = FALSE, col_types = "ci") %>%
+        mutate(sample_id = sid) %>%
+        select(readname = X1, readlength = X2, sample_id)
+}) %>% Reduce("bind_rows", .)
+Len <- distinct(bind_rows(Len1, Len2)) %>% mutate(chr = "rCRS")
+rm(Len1, Len2)
+invisible(gc())
+Len22 <- lapply(names(lenFiles22), function(sid) {
+    read_tsv(lenFiles22[sid], col_names = FALSE, col_types = "ci") %>%
+        mutate(sample_id = sid) %>%
+        select(readname = X1, readlength = X2, sample_id)
+}) %>% Reduce("bind_rows", .) %>% mutate(chr = "chr22")
+Len <- bind_rows(Len, Len22)
+rm(Len22)
+invisible(gc())
+
+Plot2 <- Len %>% left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    ggplot(aes(x = readlength, group = sample_id, colour = individual_id)) +
+    geom_density(bw = .02) +
+    geom_vline(xintercept = 16569, linetype = 2) +
+    facet_grid(chr ~ .) +
+    scale_x_log10() +
+    theme_cowplot() +
+    theme(legend.position = "none") +
+    ggtitle("Distribution of ONT read lengths")
+
+Plot2
+
+# svg("./Figs/dist_read_length_ONT_all.svg", height = 6, width = 12)
+# Plot2
+# invisible(dev.off())
+invisible(png("./Figs/dist_read_length_ONT_all.png", height = 1000, width = 2000, res = 150))
+Plot2
+invisible(dev.off())
+```
+
+
