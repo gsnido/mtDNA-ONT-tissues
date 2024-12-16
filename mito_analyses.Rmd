@@ -378,59 +378,59 @@ In the case of the Illumina samples, some small regions seem to be problematic
 for both samples, suggesting that sequence composition is playing a role.
 
 ```{r, fig.height=6, fig.width=9}
-# perNucFiles <- paste0("../results/depth/", 
-#                       filter(Metadata, tissue == "edta_blood")$sample_id, 
-#                       "_per_nuc_depth_chr22.txt")
-# names(perNucFiles) <- filter(Metadata, tissue == "edta_blood")$sample_id
-# #all(file.exists(perNucFiles))
-# 
-# 
-# perNucCov <- lapply(names(perNucFiles), function(sid) {
-#     read_tsv(perNucFiles[sid], col_select = c(1,2,4,6,8,10),
-#              c("seq", "pos", "a", "A", "c", "C", "g", "G", "t", "T")) %>%
-#         mutate(sample_id = sid)
-# }) %>% Reduce("bind_rows", .)
-# perNucCov_filt <- perNucCov %>% mutate(Cov = A + C + G + T) %>%
-#     group_by(sample_id) %>%
-#     mutate(mean_cov = mean(Cov), std_cov_2 = 2*sd(Cov)) %>%
-#     mutate(keep = ifelse(Cov > (mean_cov - std_cov_2) & Cov < (mean_cov + std_cov_2), TRUE, FALSE)) %>%
-#     filter(keep, Cov > 0) %>%
-#     select(-mean_cov, -std_cov_2, -keep) %>%
-#     ungroup()
-# 
-# errors_per_base <- perNucCov_filt %>% 
-#     pivot_longer(A:T, names_to = "base", values_to = "count") %>%
-#     arrange(sample_id, pos, desc(count)) %>%
-#     group_by(sample_id, pos) %>%
-#     mutate(hom_GT = base[1], het_GT = ifelse(count[2] > 0, base[2], NA)) %>%
-#     mutate(hom_right = count[1]) %>%
-#     mutate(het_right = ifelse(!is.na(het_GT), min(Cov[1]/2,count[1])+min(Cov[1]/2,count[2]), NA)) %>%
-#     select(sample_id, pos, Cov, hom_right, het_right) %>%
-#     distinct() %>%
-#     mutate(right = pmax(hom_right, het_right, na.rm = TRUE)) %>%
-#     mutate(wrong = Cov - right) %>%
-#     select(-hom_right, -het_right)
-# 
-# Plot3 <- errors_per_base %>%
-#     ggplot(aes(x = pos, y = wrong/Cov)) +
-#     geom_point(size = 1) +
-#     facet_grid(sample_id ~ .)
-# 
-# Plot3
-# 
-# invisible(png("./Figs/GT_dispersion.png", height = 2000, width = 6000, res = 150))
-# Plot3
-# invisible(dev.off())
+perNucFiles <- paste0("../results/depth/", 
+                      filter(Metadata, tissue == "edta_blood")$sample_id, 
+                      "_per_nuc_depth_chr22.txt")
+names(perNucFiles) <- filter(Metadata, tissue == "edta_blood")$sample_id
+#all(file.exists(perNucFiles))
+
+
+perNucCov <- lapply(names(perNucFiles), function(sid) {
+    read_tsv(perNucFiles[sid], col_select = c(1,2,4,6,8,10),
+             c("seq", "pos", "a", "A", "c", "C", "g", "G", "t", "T")) %>%
+        mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .)
+perNucCov_filt <- perNucCov %>% mutate(Cov = A + C + G + T) %>%
+    group_by(sample_id) %>%
+    mutate(mean_cov = mean(Cov), std_cov_2 = 2*sd(Cov)) %>%
+    mutate(keep = ifelse(Cov > (mean_cov - std_cov_2) & Cov < (mean_cov + std_cov_2), TRUE, FALSE)) %>%
+    filter(keep, Cov > 0) %>%
+    select(-mean_cov, -std_cov_2, -keep) %>%
+    ungroup()
+
+errors_per_base <- perNucCov_filt %>% 
+    pivot_longer(A:T, names_to = "base", values_to = "count") %>%
+    arrange(sample_id, pos, desc(count)) %>%
+    group_by(sample_id, pos) %>%
+    mutate(hom_GT = base[1], het_GT = ifelse(count[2] > 0, base[2], NA)) %>%
+    mutate(hom_right = count[1]) %>%
+    mutate(het_right = ifelse(!is.na(het_GT), min(Cov[1]/2,count[1])+min(Cov[1]/2,count[2]), NA)) %>%
+    select(sample_id, pos, Cov, hom_right, het_right) %>%
+    distinct() %>%
+    mutate(right = pmax(hom_right, het_right, na.rm = TRUE)) %>%
+    mutate(wrong = Cov - right) %>%
+    select(-hom_right, -het_right)
+
+Plot3 <- errors_per_base %>%
+    ggplot(aes(x = pos, y = wrong/Cov)) +
+    geom_point(size = 1) +
+    facet_grid(sample_id ~ .)
+
+Plot3
+
+invisible(png("./Figs/GT_dispersion.png", height = 2000, width = 6000, res = 150))
+Plot3
+invisible(dev.off())
 ```
 
 The following table shows the error rate calculated based on this region.
 
 ```{r}
-# errors_per_base %>% group_by(sample_id) %>%
-#     summarise(error_rate = formatC(sum(wrong)/sum(Cov), digits = 2)) %>%
-#     left_join(Metadata %>% select(sample_id, platform)) %>%
-#     kable(caption = "Error rate in chr22:20,000,000-20,100,000") %>%
-#     kable_styling(bootstrap_options = "striped", full_width = FALSE)
+errors_per_base %>% group_by(sample_id) %>%
+    summarise(error_rate = formatC(sum(wrong)/sum(Cov), digits = 2)) %>%
+    left_join(Metadata %>% select(sample_id, platform)) %>%
+    kable(caption = "Error rate in chr22:20,000,000-20,100,000") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 
 ### Mutational load
@@ -446,52 +446,52 @@ logit-transform these values (which would be ranging from 0 to 1) so that they
 are normally distributed M = log2(e/(1-e)).
 
 ```{r, fig.height = 4, fig.width = 7}
-# perNucFiles2 <- paste0("../results/depth/", 
-#                        filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
-#                        "_per_nuc_depth_chrM.txt")
-# names(perNucFiles2) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
-# #all(file.exists(perNucFiles2))
-# 
-# 
-# perNucCov2 <- lapply(names(perNucFiles2), function(sid) {
-#     read_tsv(perNucFiles2[sid], col_select = c(1,2,4,6,8,10),
-#              c("seq", "pos", "a", "A", "c", "C", "g", "G", "t", "T")) %>%
-#         mutate(sample_id = sid)
-# }) %>% Reduce("bind_rows", .) %>%
-#     mutate(Cov = A + C + G + T)
-# 
-# mut_load <- perNucCov2 %>% 
-#     pivot_longer(A:T, names_to = "base", values_to = "count") %>%
-#     arrange(sample_id, pos, desc(count)) %>%
-#     group_by(sample_id, pos) %>%
-#     mutate(hom_GT = base[1]) %>%
-#     mutate(right = count[1]) %>%
-#     select(sample_id, pos, Cov, right) %>%
-#     distinct() %>%
-#     filter(pos != 3107) %>%
-#     left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id)) %>%
-#     mutate(mut_load = (Cov - right)/Cov)
-# mut_load$mut_load <- transf.betareg(mut_load$mut_load)
-# mut_load$M <- log2(mut_load$mut_load / (1 - mut_load$mut_load))
-# 
-# Plot4_dist <- mut_load %>% ggplot(aes(x = M)) + 
-#     geom_density(aes(colour = tissue))
-# 
-# #Plot4 <- mut_load %>%
-# #    ggplot(aes(x = pos, y = M)) +
-# #    geom_point() +
-# #    facet_grid(sample_id ~ .)
-# 
-# Plot4_dist
-# #Plot4
-# 
-# invisible(png("./Figs/MT_M_dist.png", height = 1000, width = 1500, res = 150))
-# Plot4_dist
-# invisible(dev.off())
-# 
-# #invisible(png("./Figs/MT_M_load.png", height = 2000, width = 6000, res = 150))
-# #Plot4
-# #invisible(dev.off())
+perNucFiles2 <- paste0("../results/depth/", 
+                       filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+                       "_per_nuc_depth_chrM.txt")
+names(perNucFiles2) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+#all(file.exists(perNucFiles2))
+
+
+perNucCov2 <- lapply(names(perNucFiles2), function(sid) {
+    read_tsv(perNucFiles2[sid], col_select = c(1,2,4,6,8,10),
+             c("seq", "pos", "a", "A", "c", "C", "g", "G", "t", "T")) %>%
+        mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .) %>%
+    mutate(Cov = A + C + G + T)
+
+mut_load <- perNucCov2 %>% 
+    pivot_longer(A:T, names_to = "base", values_to = "count") %>%
+    arrange(sample_id, pos, desc(count)) %>%
+    group_by(sample_id, pos) %>%
+    mutate(hom_GT = base[1]) %>%
+    mutate(right = count[1]) %>%
+    select(sample_id, pos, Cov, right) %>%
+    distinct() %>%
+    filter(pos != 3107) %>%
+    left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id)) %>%
+    mutate(mut_load = (Cov - right)/Cov)
+mut_load$mut_load <- transf.betareg(mut_load$mut_load)
+mut_load$M <- log2(mut_load$mut_load / (1 - mut_load$mut_load))
+
+Plot4_dist <- mut_load %>% ggplot(aes(x = M)) + 
+    geom_density(aes(colour = tissue))
+
+#Plot4 <- mut_load %>%
+#    ggplot(aes(x = pos, y = M)) +
+#    geom_point() +
+#    facet_grid(sample_id ~ .)
+
+Plot4_dist
+#Plot4
+
+invisible(png("./Figs/MT_M_dist.png", height = 1000, width = 1500, res = 150))
+Plot4_dist
+invisible(dev.off())
+
+#invisible(png("./Figs/MT_M_load.png", height = 2000, width = 6000, res = 150))
+#Plot4
+#invisible(dev.off())
 ```
 
 However, this is just an average mutational load in the entire mtDNA
@@ -502,40 +502,40 @@ transformation of the proportion of mismatches in the read:
 M = logit(mismatches/(mismatches+matches))
 
 ```{r, fig.height=4, fig.width=7}
-# snvsPerReadFiles <- paste0("../results/snvs_per_read/", 
-#                            filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id,
-#                            ".tsv")
-# names(snvsPerReadFiles) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
-# #all(file.exists(snvsPerReadFiles))
-# 
-# snvsPerRead <- lapply(names(snvsPerReadFiles), function(sid) {
-#                           message(sid)
-#     read_tsv(snvsPerReadFiles[sid], col_types = "cii") %>%
-#     group_by(read_id) %>%
-#     slice_max(matches, n = 1, with_ties = FALSE) %>%
-#     ungroup() %>%
-#     mutate(sample_id = sid)
-# }) %>% Reduce("bind_rows", .) %>%
-#     left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id)) %>%
-#     mutate(mut_load = mismatches / (matches + mismatches))
-# 
-# snvsPerRead$mut_load <- transf.betareg(snvsPerRead$mut_load)
-# snvsPerRead$M <- log2(snvsPerRead$mut_load / (1 - snvsPerRead$mut_load))
-# 
-# Plot5 <- snvsPerRead %>% filter(M > -10) %>%
-#     ggplot() +
-#     geom_density(aes(x = M, colour = tissue)) +
-#     geom_vline(xintercept = -2.8, linetype = 2)
-# #Plot6 <- snvsPerRead %>% filter(M > -10) %>% 
-# #    ggplot() +
-# #    geom_point(aes(x = M, y = matches + mismatches)) +
-# #    facet_grid(sample_id~.)
-# 
-# Plot5
-# 
-# invisible(png("./Figs/MT_M_perRead_dist.png", height = 1000, width = 1500, res = 150))
-# Plot5
-# invisible(dev.off())
+snvsPerReadFiles <- paste0("../results/snvs_per_read/", 
+                           filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id,
+                           ".tsv")
+names(snvsPerReadFiles) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+#all(file.exists(snvsPerReadFiles))
+
+snvsPerRead <- lapply(names(snvsPerReadFiles), function(sid) {
+                          #message(sid)
+    read_tsv(snvsPerReadFiles[sid], col_types = "cii") %>%
+    group_by(read_id) %>%
+    slice_max(matches, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .) %>%
+    left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id)) %>%
+    mutate(mut_load = mismatches / (matches + mismatches))
+
+snvsPerRead$mut_load <- transf.betareg(snvsPerRead$mut_load)
+snvsPerRead$M <- log2(snvsPerRead$mut_load / (1 - snvsPerRead$mut_load))
+
+Plot5 <- snvsPerRead %>% filter(M > -10) %>%
+    ggplot() +
+    geom_density(aes(x = M, colour = tissue)) +
+    geom_vline(xintercept = -2.8, linetype = 2)
+#Plot6 <- snvsPerRead %>% filter(M > -10) %>% 
+#    ggplot() +
+#    geom_point(aes(x = M, y = matches + mismatches)) +
+#    facet_grid(sample_id~.)
+
+Plot5
+
+invisible(png("./Figs/MT_M_perRead_dist.png", height = 1000, width = 1500, res = 150))
+Plot5
+invisible(dev.off())
 ```
 
 Using __M__ as a proxy for the mutational load in the mtDNA sequence that was
@@ -548,13 +548,13 @@ Strikingly, the relative proportions of these mtDNA species are highly
 tissue-specific.
 
 ```{r}
-# snvsPerRead %>%
-#     mutate(high_mut_load = ifelse(M > -2.8, TRUE, FALSE)) %>%
-#     group_by(sample_id, tissue) %>%
-#     summarise(N = n(), nb_high_mut = sum(high_mut_load), prop_high_mut = nb_high_mut / N, .groups = "drop") %>%
-#     mutate(prop_high_mut = formatC(prop_high_mut, digits = 2)) %>%
-#     kable(caption = "Relative proportions of high-mutant mtDNA reads") %>%
-#     kable_styling(bootstrap_options = "striped", full_width = FALSE)
+snvsPerRead %>%
+    mutate(high_mut_load = ifelse(M > -2.8, TRUE, FALSE)) %>%
+    group_by(sample_id, tissue) %>%
+    summarise(N = n(), nb_high_mut = sum(high_mut_load), prop_high_mut = nb_high_mut / N, .groups = "drop") %>%
+    mutate(prop_high_mut = formatC(prop_high_mut, digits = 2)) %>%
+    kable(caption = "Relative proportions of high-mutant mtDNA reads") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
 
 These highly-mutated mtDNA sequences tend to be smaller than the prevailing
@@ -564,41 +564,41 @@ of mtDNA molecules, those with more than 12% mutational load and those with
 less.
 
 ```{r, fig.height=5, fig.width=7}
-# gc_mt <- left_join(snvsPerRead,
-# lapply(unique(snvsPerRead$sample_id), function(sid) {
-#     #message(sid)
-#     read_tsv(paste0("/data1/romain/ont/results/gc_content/", sid, "_chrM.tsv"), col_types = "cd") %>%
-#     group_by(read_id) %>%
-#     slice_head(n = 1) %>%
-#     ungroup() %>%
-#     mutate(sample_id = sid)
-# }) %>% Reduce("bind_rows", .), by = join_by(read_id, sample_id))
-# 
-# Data <- gc_mt %>%
-#     mutate(high_mut_load = as.integer(ifelse(M > -2.8, 1, 0))) %>%
-#     mutate(len = matches + mismatches)
-# 
-# lapply(unique(snvsPerRead$sample_id), function(sid) {
-#     glm(high_mut_load ~ len, data = filter(Data, sample_id == sid), family = "binomial") %>%
-#         broom::tidy() %>% filter(term != "(Intercept)") %>%
-#         mutate(sample_id = sid) %>%
-#         select(sample_id, everything())
-# }) %>% Reduce("bind_rows", .) %>%
-#     select(sample_id, estimate, statistic, p.value) %>%
-#     mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
-#     kable(caption = "Association between read length and highly-mutated mtDNA") %>%
-#     kable_styling(bootstrap_options = "striped", full_width = FALSE)
-# 
-# Plot7 <- Data %>% ggplot(aes(x = as.factor(high_mut_load), y = len)) +
-#     #geom_violin() +
-#     geom_boxplot(outlier.shape = NA) +
-#     facet_grid(~tissue)
-# 
-# Plot7
-# 
-# invisible(png("./Figs/MT_mutator_species.png", height = 1000, width = 1500, res = 150))
-# Plot7
-# invisible(dev.off())
+gc_mt <- left_join(snvsPerRead,
+lapply(unique(snvsPerRead$sample_id), function(sid) {
+    #message(sid)
+    read_tsv(paste0("/data1/romain/ont/results/gc_content/", sid, "_chrM.tsv"), col_types = "cd") %>%
+    group_by(read_id) %>%
+    slice_head(n = 1) %>%
+    ungroup() %>%
+    mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .), by = join_by(read_id, sample_id))
+
+Data <- gc_mt %>%
+    mutate(high_mut_load = as.integer(ifelse(M > -2.8, 1, 0))) %>%
+    mutate(len = matches + mismatches)
+
+lapply(unique(snvsPerRead$sample_id), function(sid) {
+    glm(high_mut_load ~ len, data = filter(Data, sample_id == sid), family = "binomial") %>%
+        broom::tidy() %>% filter(term != "(Intercept)") %>%
+        mutate(sample_id = sid) %>%
+        select(sample_id, everything())
+}) %>% Reduce("bind_rows", .) %>%
+    select(sample_id, estimate, statistic, p.value) %>%
+    mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
+    kable(caption = "Association between read length and highly-mutated mtDNA") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+Plot7 <- Data %>% ggplot(aes(x = as.factor(high_mut_load), y = len)) +
+    #geom_violin() +
+    geom_boxplot(outlier.shape = NA) +
+    facet_grid(~tissue)
+
+Plot7
+
+invisible(png("./Figs/MT_mutator_species.png", height = 1000, width = 1500, res = 150))
+Plot7
+invisible(dev.off())
 ```
 
 It is unlikely that this is a sequencing artifact, since different tissues present
