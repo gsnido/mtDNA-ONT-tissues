@@ -475,7 +475,9 @@ mut_load$mut_load <- transf.betareg(mut_load$mut_load)
 mut_load$M <- log2(mut_load$mut_load / (1 - mut_load$mut_load))
 
 Plot4_dist <- mut_load %>% ggplot(aes(x = M)) + 
-    geom_density(aes(colour = tissue))
+    geom_density(aes(colour = tissue)) +
+    ggtitle("mtDNA non-GT basecall proportion") +
+    xlim(-10, 0)
 
 #Plot4 <- mut_load %>%
 #    ggplot(aes(x = pos, y = M)) +
@@ -525,7 +527,9 @@ snvsPerRead$M <- log2(snvsPerRead$mut_load / (1 - snvsPerRead$mut_load))
 Plot5 <- snvsPerRead %>% filter(M > -10) %>%
     ggplot() +
     geom_density(aes(x = M, colour = tissue)) +
-    geom_vline(xintercept = -2.8, linetype = 2)
+    geom_vline(xintercept = -3.5, linetype = 2) +
+    ggtitle("mtDNA non-reference basecall proportion PER READ") +
+    xlim(-10, 0)
 #Plot6 <- snvsPerRead %>% filter(M > -10) %>% 
 #    ggplot() +
 #    geom_point(aes(x = M, y = matches + mismatches)) +
@@ -542,7 +546,7 @@ Using __M__ as a proxy for the mutational load in the mtDNA sequence that was
 the template for the read, we observerve that the mtDNA molecules exhibit a
 marked bimodal distribution. A population of mtDNA molecules harbours more
 mutations than the prevailing mtDNA population. The threshold seems to be
-around 12% error rate (M = -2.8). See dashed vertical line above.
+around 8% error rate (M = -3.5). See dashed vertical line above.
 
 Strikingly, the relative proportions of these mtDNA species are highly
 tissue-specific.
@@ -579,12 +583,13 @@ Data <- gc_mt %>%
     mutate(len = matches + mismatches)
 
 lapply(unique(snvsPerRead$sample_id), function(sid) {
-    glm(high_mut_load ~ len, data = filter(Data, sample_id == sid), family = "binomial") %>%
+    glm(high_mut_load ~ len, data = filter(Data, sample_id == sid) %>% mutate(len = scale2(len)), family = "binomial") %>%
         broom::tidy() %>% filter(term != "(Intercept)") %>%
         mutate(sample_id = sid) %>%
         select(sample_id, everything())
 }) %>% Reduce("bind_rows", .) %>%
-    select(sample_id, estimate, statistic, p.value) %>%
+    select(sample_id, term, estimate, statistic, p.value) %>%
+    mutate(signif = stars.pvalue(p.value)) %>%
     mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
     kable(caption = "Association between read length and highly-mutated mtDNA") %>%
     kable_styling(bootstrap_options = "striped", full_width = FALSE)
@@ -605,62 +610,69 @@ It is unlikely that this is a sequencing artifact, since different tissues prese
 different proportions of these "high mutator" mtDNA species. To confirm this, we
 can test whether chr22 also has a similar bimodal distribution.
 
-```{r, fig.width=7, fig.height=5}
-# snvsPerReadFiles_chr22 <- paste0("../results/snvs_per_read/", 
-#                                  filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
-#                                  "_chr22.tsv")
-# names(snvsPerReadFiles_chr22) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
-# #all(file.exists(snvsPerReadFiles_chr22))
-# 
-# snvsPerRead_chr22 <- lapply(names(snvsPerReadFiles_chr22), function(sid) {
-#                           message(sid)
-#     read_tsv(snvsPerReadFiles_chr22[sid], col_types = "cii") %>%
-#     mutate(sample_id = sid)
-# }) %>% Reduce("bind_rows", .) %>%
-#     mutate(mut_load = mismatches / (matches + mismatches)) %>%
-#     left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id))
-# 
-# snvsPerRead_chr22$mut_load <- transf.betareg(snvsPerRead_chr22$mut_load)
-# snvsPerRead_chr22$M <- log2(snvsPerRead_chr22$mut_load / (1 - snvsPerRead_chr22$mut_load))
-# 
-# Plot8 <- snvsPerRead_chr22 %>%
-#     filter(M > -10) %>%
-#     ggplot() +
-#     geom_density(aes(x = M, colour = tissue))
-#     #geom_vline(xintercept = -2.8, linetype = 2)
-# 
-# Plot8
-# 
-# invisible(png("./Figs/chr22_M_perRead_dist.png", height = 1000, width = 1500, res = 150))
-# Plot8
-# invisible(dev.off())
+```{r, fig.width=7, fig.height=8}
+snvsPerReadFiles_chr22 <- paste0("../results/snvs_per_read/", 
+                                 filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+                                 "_chr22.tsv")
+names(snvsPerReadFiles_chr22) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+#all(file.exists(snvsPerReadFiles_chr22))
+
+snvsPerRead_chr22 <- lapply(names(snvsPerReadFiles_chr22), function(sid) {
+                          #message(sid)
+    read_tsv(snvsPerReadFiles_chr22[sid], col_types = "cii") %>%
+    mutate(sample_id = sid)
+}) %>% Reduce("bind_rows", .) %>%
+    mutate(mut_load = mismatches / (matches + mismatches)) %>%
+    left_join(select(Metadata, sample_id, tissue), by = join_by(sample_id))
+
+snvsPerRead_chr22$mut_load <- transf.betareg(snvsPerRead_chr22$mut_load)
+snvsPerRead_chr22$M <- log2(snvsPerRead_chr22$mut_load / (1 - snvsPerRead_chr22$mut_load))
+
+Plot8 <- bind_rows(snvsPerRead %>% mutate(seqnames = "mtDNA"),
+                   snvsPerRead_chr22 %>% mutate(seqnames = "chr22") %>%
+                       select(read_id, matches:sample_id, tissue, mut_load, M, seqnames)) %>%
+    filter(M > -10) %>%
+    ggplot() +
+    geom_density(aes(x = M, colour = tissue)) +
+    facet_grid(seqnames~.) +
+    geom_vline(xintercept = -3.5, linetype = 2) +
+    ggtitle("mtDNA non-reference basecall proportion PER READ")
+
+Plot8
+
+invisible(png("./Figs/chr22_M_perRead_dist.png", height = 1800, width = 1500, res = 150))
+Plot8
+invisible(dev.off())
 ```
 
 We also test now whether the GC content is different between these different
 mtDNA populations.
 
 ```{r, fig.width=7, fig.height=5}
-# lapply(unique(snvsPerRead$sample_id), function(sid) {
-#     glm(high_mut_load ~ gc_proportion, data = filter(Data, sample_id == sid), family = "binomial") %>%
-#         broom::tidy() %>% filter(term != "(Intercept)") %>%
-#         mutate(sample_id = sid) %>%
-#         select(sample_id, everything())
-# }) %>% Reduce("bind_rows", .) %>%
-#     select(sample_id, estimate, statistic, p.value) %>%
-#     mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
-#     kable(caption = "Association between GC proportion and highly-mutated mtDNA") %>%
-#     kable_styling(bootstrap_options = "striped", full_width = FALSE)
-# 
-# Plot9 <- Data %>% ggplot(aes(x = as.factor(high_mut_load), y = gc_proportion)) +
-#     geom_boxplot(outlier.shape = NA) +
-#     ylim(0.25, 0.55) +
-#     facet_grid(~tissue)
-# 
-# Plot9
-# 
-# invisible(png("./Figs/MT_mutator_species_GC_content.png", height = 1000, width = 1500, res = 150))
-# Plot9
-# invisible(dev.off())
+lapply(unique(snvsPerRead$sample_id), function(sid) {
+    glm(high_mut_load ~ gc_proportion, data = filter(Data, sample_id == sid) %>% 
+                                          mutate(gc_proportion = scale2(gc_proportion)),
+            family = "binomial") %>%
+        broom::tidy() %>% filter(term != "(Intercept)") %>%
+        mutate(sample_id = sid) %>%
+        select(sample_id, everything())
+}) %>% Reduce("bind_rows", .) %>%
+    select(sample_id, term, estimate, statistic, p.value) %>%
+    mutate(signif = stars.pvalue(p.value)) %>%
+    mutate(estimate = formatC(estimate, digits = 2), statistic = formatC(statistic, digits = 2), p.value = formatC(p.value, digits = 2)) %>%
+    kable(caption = "Association between GC proportion and highly-mutated mtDNA") %>%
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+Plot9 <- Data %>% ggplot(aes(x = as.factor(high_mut_load), y = gc_proportion)) +
+    geom_boxplot(outlier.shape = NA) +
+    ylim(0.25, 0.55) +
+    facet_grid(~tissue)
+
+Plot9
+
+invisible(png("./Figs/MT_mutator_species_GC_content.png", height = 1000, width = 1500, res = 150))
+Plot9
+invisible(dev.off())
 ```
 
 In order to characterize better this population of highly-mutated mtDNA
@@ -671,7 +683,7 @@ deletions in the aligned read (normalised by its length), and proportion of the
 aligned read made up of deletion (i.e., the total sum of the deletion lengths
 in the alignment divided by the read length).
 
-highly mutated mtDNA ~ GC_proportion + Avg_read_qual + n_deletions + prop_
+highly mutated mtDNA ~ GC_proportion + Avg_read_qual + n_deletions + prop_del_bases
 
 ```{r}
 delFiles1 <- paste0("../results/deletions/",
@@ -709,39 +721,47 @@ rm(Del1, Del2)
 invisible(gc())
 ```
 
-```{r}
-#nb_dels <- Del %>%
-#    mutate(del_size = ifelse(del_start <= del_end, 
-#                             del_end - del_start, 
-#                             del_end + (16569 - del_start))) %>%
-#    group_by(sample_id, read_id, read_length, avg_qual) %>%
-#    summarise(n_dels = n(), n_deleted_bases = sum(del_size), 
-#              median_del_size = median(del_size),
-#              .groups = "drop") %>%
-#    mutate(n_dels_per_base = n_dels / read_length,
-#           n_deleted_bases_per_base = n_deleted_bases / read_length) %>%
-#    group_by(sample_id, read_id) %>%
-#    slice_max(read_length, n = 1) %>%
-#    ungroup()
-#
-#Data <- inner_join(Data %>% select(sample_id, tissue, read_id = read_id, everything()), nb_dels, by = join_by(sample_id, read_id))
-#
-#lapply(unique(snvsPerRead$sample_id), function(sid) {
-#    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base,
-#        data = filter(Data, sample_id == sid) %>%
-#            mutate(gc_proportion = scale2(gc_proportion), 
-#                   avg_qual = scale2(avg_qual), 
-#                   n_dels_per_base = scale2(n_dels_per_base), 
-#                   n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),
-#        family = "binomial") %>%
-#    broom::tidy() %>% filter(term != "(Intercept)") %>%
-#    mutate(sample_id = sid) %>%
-#    select(sample_id, everything())
-#}) %>% Reduce("bind_rows", .) %>%
-#    select(sample_id, estimate, statistic, p.value) %>%
-#    mutate(estimate = formatC(estimate, digits = 3), statistic = formatC(statistic, digits = 3), p.value = formatC(p.value, digits = 3)) %>%
-#    kable(caption = "Association between different read statics and the highly-mutated mtDNA") %>%
-#    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```{r, results='asis'}
+nb_dels <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                             del_end - del_start, 
+                             del_end + (16569 - del_start))) %>%
+    group_by(sample_id, read_id, read_length, avg_qual) %>%
+    summarise(n_dels = n(), n_deleted_bases = sum(del_size), 
+              median_del_size = median(del_size),
+              .groups = "drop") %>%
+    mutate(n_dels_per_base = n_dels / read_length,
+           n_deleted_bases_per_base = n_deleted_bases / read_length) %>%
+    group_by(sample_id, read_id) %>%
+    slice_max(read_length, n = 1) %>%
+    ungroup()
+
+Data <- inner_join(Data %>% select(sample_id, tissue, read_id = read_id, everything()), nb_dels, by = join_by(sample_id, read_id))
+
+Tests <- lapply(unique(snvsPerRead$sample_id), function(sid) {
+    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base,
+        data = filter(Data, sample_id == sid) %>%
+            mutate(gc_proportion = scale2(gc_proportion), 
+                   avg_qual = scale2(avg_qual), 
+                   n_dels_per_base = scale2(n_dels_per_base), 
+                   n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),
+        family = "binomial") %>%
+    broom::tidy() %>% filter(term != "(Intercept)") %>%
+    mutate(sample_id = sid) %>%
+    select(sample_id, everything())
+})
+
+for (Test in Tests) {
+    Test %>% select(sample_id, term, estimate, statistic, p.value) %>%
+        mutate(signif = stars.pvalue(p.value)) %>%
+        mutate(estimate = formatC(estimate, digits = 3), 
+               statistic = formatC(statistic, digits = 3), 
+               p.value = formatC(p.value, digits = 3)) %>%
+        kable(caption = paste0(Test$sample_id[1])) %>%
+        kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
+        print()
+    cat("\n")
+}
 ```
 
 These results indicate that these highly-mutated mtDNA sequences have
