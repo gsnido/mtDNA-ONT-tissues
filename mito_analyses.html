@@ -11,7 +11,7 @@
 
 <meta name="author" content="Gonzalo S. Nido" />
 
-<meta name="date" content="2024-12-17" />
+<meta name="date" content="2024-12-18" />
 
 <title>Mitochondrial deletions in human tissues</title>
 
@@ -1913,7 +1913,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Mitochondrial deletions in human tissues</h1>
 <h4 class="author">Gonzalo S. Nido</h4>
-<h4 class="date">2024-12-17</h4>
+<h4 class="date">2024-12-18</h4>
 
 </div>
 
@@ -3753,6 +3753,7 @@ gc_proportion
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true"></a><span class="kw">invisible</span>(<span class="kw">dev.off</span>())</span></code></pre></div>
 <p>In order to characterize better this population of highly-mutated mtDNA sequences, we run a generalized linear model where the mtDNA class (highly mutated, 1 or not highly mutated, 0) is predicted simultaneously by the GC proportion (as before), average sequencing quality of the read, number of deletions in the aligned read (normalised by its length), and proportion of the aligned read made up of deletion (i.e., the total sum of the deletion lengths in the alignment divided by the read length).</p>
 <p>highly mutated mtDNA ~ GC_proportion + Avg_read_qual + n_deletions + prop_del_bases</p>
+<p>(All covariates are standardized to render coefficients comparable).</p>
 <div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true"></a>delFiles1 &lt;-<span class="st"> </span><span class="kw">paste0</span>(<span class="st">&quot;../results/deletions/&quot;</span>,</span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true"></a>                    <span class="kw">filter</span>(Metadata, platform <span class="op">==</span><span class="st"> &quot;ont&quot;</span>, individual_id <span class="op">%in%</span><span class="st"> </span><span class="kw">c</span>(<span class="st">&quot;a&quot;</span>,<span class="st">&quot;b&quot;</span>))<span class="op">$</span>sample_id, </span>
 <span id="cb24-3"><a href="#cb24-3" aria-hidden="true"></a>                    <span class="st">&quot;_chrM.txt&quot;</span>)</span>
@@ -3803,32 +3804,33 @@ gc_proportion
 <span id="cb25-15"><a href="#cb25-15" aria-hidden="true"></a>Data &lt;-<span class="st"> </span><span class="kw">inner_join</span>(Data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">select</span>(sample_id, tissue, <span class="dt">read_id =</span> read_id, <span class="kw">everything</span>()), nb_dels, <span class="dt">by =</span> <span class="kw">join_by</span>(sample_id, read_id))</span>
 <span id="cb25-16"><a href="#cb25-16" aria-hidden="true"></a></span>
 <span id="cb25-17"><a href="#cb25-17" aria-hidden="true"></a>Tests &lt;-<span class="st"> </span><span class="kw">lapply</span>(<span class="kw">unique</span>(snvsPerRead<span class="op">$</span>sample_id), <span class="cf">function</span>(sid) {</span>
-<span id="cb25-18"><a href="#cb25-18" aria-hidden="true"></a>    <span class="kw">glm</span>(high_mut_load <span class="op">~</span><span class="st"> </span>gc_proportion <span class="op">+</span><span class="st"> </span>avg_qual <span class="op">+</span><span class="st"> </span>n_dels_per_base <span class="op">+</span><span class="st"> </span>n_deleted_bases_per_base,</span>
+<span id="cb25-18"><a href="#cb25-18" aria-hidden="true"></a>    <span class="kw">glm</span>(high_mut_load <span class="op">~</span><span class="st"> </span>gc_proportion <span class="op">+</span><span class="st"> </span>avg_qual <span class="op">+</span><span class="st"> </span>n_dels_per_base <span class="op">+</span><span class="st"> </span>n_deleted_bases_per_base <span class="op">+</span><span class="st"> </span>len,</span>
 <span id="cb25-19"><a href="#cb25-19" aria-hidden="true"></a>        <span class="dt">data =</span> <span class="kw">filter</span>(Data, sample_id <span class="op">==</span><span class="st"> </span>sid) <span class="op">%&gt;%</span></span>
 <span id="cb25-20"><a href="#cb25-20" aria-hidden="true"></a><span class="st">            </span><span class="kw">mutate</span>(<span class="dt">gc_proportion =</span> <span class="kw">scale2</span>(gc_proportion), </span>
 <span id="cb25-21"><a href="#cb25-21" aria-hidden="true"></a>                   <span class="dt">avg_qual =</span> <span class="kw">scale2</span>(avg_qual), </span>
 <span id="cb25-22"><a href="#cb25-22" aria-hidden="true"></a>                   <span class="dt">n_dels_per_base =</span> <span class="kw">scale2</span>(n_dels_per_base), </span>
-<span id="cb25-23"><a href="#cb25-23" aria-hidden="true"></a>                   <span class="dt">n_deleted_bases_per_base =</span> <span class="kw">scale2</span>(n_deleted_bases_per_base)),</span>
-<span id="cb25-24"><a href="#cb25-24" aria-hidden="true"></a>        <span class="dt">family =</span> <span class="st">&quot;binomial&quot;</span>) <span class="op">%&gt;%</span></span>
-<span id="cb25-25"><a href="#cb25-25" aria-hidden="true"></a><span class="st">    </span>broom<span class="op">::</span><span class="kw">tidy</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">filter</span>(term <span class="op">!=</span><span class="st"> &quot;(Intercept)&quot;</span>) <span class="op">%&gt;%</span></span>
-<span id="cb25-26"><a href="#cb25-26" aria-hidden="true"></a><span class="st">    </span><span class="kw">mutate</span>(<span class="dt">sample_id =</span> sid) <span class="op">%&gt;%</span></span>
-<span id="cb25-27"><a href="#cb25-27" aria-hidden="true"></a><span class="st">    </span><span class="kw">select</span>(sample_id, <span class="kw">everything</span>())</span>
-<span id="cb25-28"><a href="#cb25-28" aria-hidden="true"></a>})</span>
-<span id="cb25-29"><a href="#cb25-29" aria-hidden="true"></a></span>
-<span id="cb25-30"><a href="#cb25-30" aria-hidden="true"></a><span class="cf">for</span> (Test <span class="cf">in</span> Tests) {</span>
-<span id="cb25-31"><a href="#cb25-31" aria-hidden="true"></a>    Test <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">select</span>(sample_id, term, estimate, statistic, p.value) <span class="op">%&gt;%</span></span>
-<span id="cb25-32"><a href="#cb25-32" aria-hidden="true"></a><span class="st">        </span><span class="kw">mutate</span>(<span class="dt">signif =</span> <span class="kw">stars.pvalue</span>(p.value)) <span class="op">%&gt;%</span></span>
-<span id="cb25-33"><a href="#cb25-33" aria-hidden="true"></a><span class="st">        </span><span class="kw">mutate</span>(<span class="dt">estimate =</span> <span class="kw">formatC</span>(estimate, <span class="dt">digits =</span> <span class="dv">3</span>), </span>
-<span id="cb25-34"><a href="#cb25-34" aria-hidden="true"></a>               <span class="dt">statistic =</span> <span class="kw">formatC</span>(statistic, <span class="dt">digits =</span> <span class="dv">3</span>), </span>
-<span id="cb25-35"><a href="#cb25-35" aria-hidden="true"></a>               <span class="dt">p.value =</span> <span class="kw">formatC</span>(p.value, <span class="dt">digits =</span> <span class="dv">3</span>)) <span class="op">%&gt;%</span></span>
-<span id="cb25-36"><a href="#cb25-36" aria-hidden="true"></a><span class="st">        </span><span class="kw">kable</span>(<span class="dt">caption =</span> <span class="kw">paste0</span>(Test<span class="op">$</span>sample_id[<span class="dv">1</span>])) <span class="op">%&gt;%</span></span>
-<span id="cb25-37"><a href="#cb25-37" aria-hidden="true"></a><span class="st">        </span><span class="kw">kable_styling</span>(<span class="dt">bootstrap_options =</span> <span class="st">&quot;striped&quot;</span>, <span class="dt">full_width =</span> <span class="ot">FALSE</span>) <span class="op">%&gt;%</span></span>
-<span id="cb25-38"><a href="#cb25-38" aria-hidden="true"></a><span class="st">        </span><span class="kw">print</span>()</span>
-<span id="cb25-39"><a href="#cb25-39" aria-hidden="true"></a>    <span class="kw">cat</span>(<span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>)</span>
-<span id="cb25-40"><a href="#cb25-40" aria-hidden="true"></a>}</span></code></pre></div>
+<span id="cb25-23"><a href="#cb25-23" aria-hidden="true"></a>                   <span class="dt">len =</span> <span class="kw">scale2</span>(len),</span>
+<span id="cb25-24"><a href="#cb25-24" aria-hidden="true"></a>                   <span class="dt">n_deleted_bases_per_base =</span> <span class="kw">scale2</span>(n_deleted_bases_per_base)),</span>
+<span id="cb25-25"><a href="#cb25-25" aria-hidden="true"></a>        <span class="dt">family =</span> <span class="st">&quot;binomial&quot;</span>) <span class="op">%&gt;%</span></span>
+<span id="cb25-26"><a href="#cb25-26" aria-hidden="true"></a><span class="st">    </span>broom<span class="op">::</span><span class="kw">tidy</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">filter</span>(term <span class="op">!=</span><span class="st"> &quot;(Intercept)&quot;</span>) <span class="op">%&gt;%</span></span>
+<span id="cb25-27"><a href="#cb25-27" aria-hidden="true"></a><span class="st">    </span><span class="kw">mutate</span>(<span class="dt">sample_id =</span> sid) <span class="op">%&gt;%</span></span>
+<span id="cb25-28"><a href="#cb25-28" aria-hidden="true"></a><span class="st">    </span><span class="kw">select</span>(sample_id, <span class="kw">everything</span>())</span>
+<span id="cb25-29"><a href="#cb25-29" aria-hidden="true"></a>})</span>
+<span id="cb25-30"><a href="#cb25-30" aria-hidden="true"></a></span>
+<span id="cb25-31"><a href="#cb25-31" aria-hidden="true"></a><span class="cf">for</span> (Test <span class="cf">in</span> Tests) {</span>
+<span id="cb25-32"><a href="#cb25-32" aria-hidden="true"></a>    Test <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">select</span>(sample_id, term, estimate, statistic, p.value) <span class="op">%&gt;%</span></span>
+<span id="cb25-33"><a href="#cb25-33" aria-hidden="true"></a><span class="st">        </span><span class="kw">mutate</span>(<span class="dt">signif =</span> <span class="kw">stars.pvalue</span>(p.value)) <span class="op">%&gt;%</span></span>
+<span id="cb25-34"><a href="#cb25-34" aria-hidden="true"></a><span class="st">        </span><span class="kw">mutate</span>(<span class="dt">estimate =</span> <span class="kw">formatC</span>(estimate, <span class="dt">digits =</span> <span class="dv">3</span>), </span>
+<span id="cb25-35"><a href="#cb25-35" aria-hidden="true"></a>               <span class="dt">statistic =</span> <span class="kw">formatC</span>(statistic, <span class="dt">digits =</span> <span class="dv">3</span>), </span>
+<span id="cb25-36"><a href="#cb25-36" aria-hidden="true"></a>               <span class="dt">p.value =</span> <span class="kw">formatC</span>(p.value, <span class="dt">digits =</span> <span class="dv">3</span>)) <span class="op">%&gt;%</span></span>
+<span id="cb25-37"><a href="#cb25-37" aria-hidden="true"></a><span class="st">        </span><span class="kw">kable</span>(<span class="dt">caption =</span> <span class="kw">paste0</span>(Test<span class="op">$</span>sample_id[<span class="dv">1</span>], <span class="st">&quot; (&quot;</span>, Metadata[Metadata<span class="op">$</span>sample_id <span class="op">==</span><span class="st"> </span>Test<span class="op">$</span>sample_id[<span class="dv">1</span>],]<span class="op">$</span>tissue[<span class="dv">1</span>], <span class="st">&quot;)&quot;</span>)) <span class="op">%&gt;%</span></span>
+<span id="cb25-38"><a href="#cb25-38" aria-hidden="true"></a><span class="st">        </span><span class="kw">kable_styling</span>(<span class="dt">bootstrap_options =</span> <span class="st">&quot;striped&quot;</span>, <span class="dt">full_width =</span> <span class="ot">FALSE</span>) <span class="op">%&gt;%</span></span>
+<span id="cb25-39"><a href="#cb25-39" aria-hidden="true"></a><span class="st">        </span><span class="kw">print</span>()</span>
+<span id="cb25-40"><a href="#cb25-40" aria-hidden="true"></a>    <span class="kw">cat</span>(<span class="st">&quot;</span><span class="ch">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb25-41"><a href="#cb25-41" aria-hidden="true"></a>}</span></code></pre></div>
 <table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <caption>
-6226-CT-0010
+6226-CT-0010 (PFC)
 </caption>
 <thead>
 <tr>
@@ -3861,10 +3863,10 @@ signif
 gc_proportion
 </td>
 <td style="text-align:left;">
--1.17
+-1.09
 </td>
 <td style="text-align:left;">
--47.4
+-43.8
 </td>
 <td style="text-align:left;">
 0
@@ -3881,13 +3883,13 @@ gc_proportion
 avg_qual
 </td>
 <td style="text-align:left;">
--0.0104
+0.0315
 </td>
 <td style="text-align:left;">
--0.375
+1.13
 </td>
 <td style="text-align:left;">
-0.708
+0.259
 </td>
 <td style="text-align:left;">
 </td>
@@ -3900,13 +3902,13 @@ avg_qual
 n_dels_per_base
 </td>
 <td style="text-align:left;">
--0.28
+-0.143
 </td>
 <td style="text-align:left;">
--8.75
+-4.47
 </td>
 <td style="text-align:left;">
-2.19e-18
+7.95e-06
 </td>
 <td style="text-align:left;">
 ***
@@ -3920,22 +3922,42 @@ n_dels_per_base
 n_deleted_bases_per_base
 </td>
 <td style="text-align:left;">
-0.00353
+0.0109
 </td>
 <td style="text-align:left;">
-0.0971
+0.327
 </td>
 <td style="text-align:left;">
-0.923
+0.743
 </td>
 <td style="text-align:left;">
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0010
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+-0.492
+</td>
+<td style="text-align:left;">
+-11.9
+</td>
+<td style="text-align:left;">
+8.82e-33
+</td>
+<td style="text-align:left;">
+***
 </td>
 </tr>
 </tbody>
 </table>
 <table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <caption>
-6226-CT-0011
+6226-CT-0011 (heart)
 </caption>
 <thead>
 <tr>
@@ -3968,10 +3990,10 @@ signif
 gc_proportion
 </td>
 <td style="text-align:left;">
--1.11
+-0.925
 </td>
 <td style="text-align:left;">
--113
+-85.1
 </td>
 <td style="text-align:left;">
 0
@@ -3988,13 +4010,13 @@ gc_proportion
 avg_qual
 </td>
 <td style="text-align:left;">
-0.512
+0.491
 </td>
 <td style="text-align:left;">
-23.1
+23
 </td>
 <td style="text-align:left;">
-1.47e-118
+8.45e-117
 </td>
 <td style="text-align:left;">
 ***
@@ -4008,13 +4030,13 @@ avg_qual
 n_dels_per_base
 </td>
 <td style="text-align:left;">
-0.56
+0.557
 </td>
 <td style="text-align:left;">
-33.2
+34.8
 </td>
 <td style="text-align:left;">
-4.33e-241
+2.54e-265
 </td>
 <td style="text-align:left;">
 ***
@@ -4028,23 +4050,43 @@ n_dels_per_base
 n_deleted_bases_per_base
 </td>
 <td style="text-align:left;">
-0.0308
+0.0359
 </td>
 <td style="text-align:left;">
-2.53
+3.25
 </td>
 <td style="text-align:left;">
-0.0115
+0.00117
 </td>
 <td style="text-align:left;">
-<ul>
-<li></td>
+**
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0011
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+-1.2
+</td>
+<td style="text-align:left;">
+-26.6
+</td>
+<td style="text-align:left;">
+1.92e-156
+</td>
+<td style="text-align:left;">
+***
+</td>
 </tr>
 </tbody>
 </table>
 <table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <caption>
-6226-CT-0012
+6226-CT-0012 (muscle)
 </caption>
 <thead>
 <tr>
@@ -4077,10 +4119,10 @@ signif
 gc_proportion
 </td>
 <td style="text-align:left;">
--1.29
+-1.09
 </td>
 <td style="text-align:left;">
--73.6
+-60.1
 </td>
 <td style="text-align:left;">
 0
@@ -4097,13 +4139,13 @@ gc_proportion
 avg_qual
 </td>
 <td style="text-align:left;">
-0.15
+0.241
 </td>
 <td style="text-align:left;">
-5.57
+8.87
 </td>
 <td style="text-align:left;">
-2.54e-08
+7.62e-19
 </td>
 <td style="text-align:left;">
 ***
@@ -4117,13 +4159,13 @@ avg_qual
 n_dels_per_base
 </td>
 <td style="text-align:left;">
-0.158
+0.326
 </td>
 <td style="text-align:left;">
-6.33
+13.7
 </td>
 <td style="text-align:left;">
-2.49e-10
+8.35e-43
 </td>
 <td style="text-align:left;">
 ***
@@ -4137,22 +4179,169 @@ n_dels_per_base
 n_deleted_bases_per_base
 </td>
 <td style="text-align:left;">
--0.00662
+0.00639
 </td>
 <td style="text-align:left;">
--0.173
+0.184
 </td>
 <td style="text-align:left;">
-0.863
+0.854
 </td>
 <td style="text-align:left;">
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0012
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+-1.19
+</td>
+<td style="text-align:left;">
+-29.3
+</td>
+<td style="text-align:left;">
+3.58e-188
+</td>
+<td style="text-align:left;">
+***
 </td>
 </tr>
 </tbody>
 </table>
 <table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
 <caption>
+6226-CT-0013 (liver)
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+sample_id
+</th>
+<th style="text-align:left;">
+term
+</th>
+<th style="text-align:left;">
+estimate
+</th>
+<th style="text-align:left;">
+statistic
+</th>
+<th style="text-align:left;">
+p.value
+</th>
+<th style="text-align:left;">
+signif
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
 6226-CT-0013
+</td>
+<td style="text-align:left;">
+gc_proportion
+</td>
+<td style="text-align:left;">
+-1.28
+</td>
+<td style="text-align:left;">
+-49.9
+</td>
+<td style="text-align:left;">
+0
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0013
+</td>
+<td style="text-align:left;">
+avg_qual
+</td>
+<td style="text-align:left;">
+0.488
+</td>
+<td style="text-align:left;">
+16.8
+</td>
+<td style="text-align:left;">
+2.1e-63
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0013
+</td>
+<td style="text-align:left;">
+n_dels_per_base
+</td>
+<td style="text-align:left;">
+0.765
+</td>
+<td style="text-align:left;">
+32
+</td>
+<td style="text-align:left;">
+1.44e-224
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0013
+</td>
+<td style="text-align:left;">
+n_deleted_bases_per_base
+</td>
+<td style="text-align:left;">
+0.0168
+</td>
+<td style="text-align:left;">
+1.49
+</td>
+<td style="text-align:left;">
+0.135
+</td>
+<td style="text-align:left;">
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0013
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+0.0283
+</td>
+<td style="text-align:left;">
+0.913
+</td>
+<td style="text-align:left;">
+0.361
+</td>
+<td style="text-align:left;">
+</td>
+</tr>
+</tbody>
+</table>
+<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+6226-CT-0014 (kidney)
 </caption>
 <thead>
 <tr>
@@ -4179,230 +4368,271 @@ signif
 <tbody>
 <tr>
 <td style="text-align:left;">
-6226-CT-0013
+6226-CT-0014
+</td>
+<td style="text-align:left;">
+gc_proportion
+</td>
+<td style="text-align:left;">
+-1.23
+</td>
+<td style="text-align:left;">
+-68.8
+</td>
+<td style="text-align:left;">
+0
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0014
+</td>
+<td style="text-align:left;">
+avg_qual
+</td>
+<td style="text-align:left;">
+0.331
+</td>
+<td style="text-align:left;">
+15.2
+</td>
+<td style="text-align:left;">
+3.7e-52
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0014
+</td>
+<td style="text-align:left;">
+n_dels_per_base
+</td>
+<td style="text-align:left;">
+0.377
+</td>
+<td style="text-align:left;">
+16.7
+</td>
+<td style="text-align:left;">
+1.92e-62
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0014
+</td>
+<td style="text-align:left;">
+n_deleted_bases_per_base
+</td>
+<td style="text-align:left;">
+0.0573
+</td>
+<td style="text-align:left;">
+3.51
+</td>
+<td style="text-align:left;">
+0.000452
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0014
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+-0.383
+</td>
+<td style="text-align:left;">
+-13.5
+</td>
+<td style="text-align:left;">
+2.21e-41
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+</tbody>
+</table>
+<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+6226-CT-0015 (colon)
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+sample_id
+</th>
+<th style="text-align:left;">
+term
+</th>
+<th style="text-align:left;">
+estimate
+</th>
+<th style="text-align:left;">
+statistic
+</th>
+<th style="text-align:left;">
+p.value
+</th>
+<th style="text-align:left;">
+signif
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+6226-CT-0015
+</td>
+<td style="text-align:left;">
+gc_proportion
+</td>
+<td style="text-align:left;">
+-1.28
+</td>
+<td style="text-align:left;">
+-38.6
+</td>
+<td style="text-align:left;">
+0
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0015
+</td>
+<td style="text-align:left;">
+avg_qual
+</td>
+<td style="text-align:left;">
+0.355
+</td>
+<td style="text-align:left;">
+8.58
+</td>
+<td style="text-align:left;">
+9.69e-18
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0015
+</td>
+<td style="text-align:left;">
+n_dels_per_base
+</td>
+<td style="text-align:left;">
+0.358
+</td>
+<td style="text-align:left;">
+6.86
+</td>
+<td style="text-align:left;">
+6.89e-12
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0015
+</td>
+<td style="text-align:left;">
+n_deleted_bases_per_base
+</td>
+<td style="text-align:left;">
+0.16
+</td>
+<td style="text-align:left;">
+3.66
+</td>
+<td style="text-align:left;">
+0.000251
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0015
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+-0.91
+</td>
+<td style="text-align:left;">
+-14.7
+</td>
+<td style="text-align:left;">
+1.24e-48
+</td>
+<td style="text-align:left;">
+***
+</td>
+</tr>
+</tbody>
+</table>
+<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+6226-CT-0018 (cerebellum)
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+sample_id
+</th>
+<th style="text-align:left;">
+term
+</th>
+<th style="text-align:left;">
+estimate
+</th>
+<th style="text-align:left;">
+statistic
+</th>
+<th style="text-align:left;">
+p.value
+</th>
+<th style="text-align:left;">
+signif
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+6226-CT-0018
 </td>
 <td style="text-align:left;">
 gc_proportion
 </td>
 <td style="text-align:left;">
 -1.27
-</td>
-<td style="text-align:left;">
--53.3
-</td>
-<td style="text-align:left;">
-0
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0013
-</td>
-<td style="text-align:left;">
-avg_qual
-</td>
-<td style="text-align:left;">
-0.489
-</td>
-<td style="text-align:left;">
-16.9
-</td>
-<td style="text-align:left;">
-8.69e-64
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0013
-</td>
-<td style="text-align:left;">
-n_dels_per_base
-</td>
-<td style="text-align:left;">
-0.769
-</td>
-<td style="text-align:left;">
-32.6
-</td>
-<td style="text-align:left;">
-8.24e-233
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0013
-</td>
-<td style="text-align:left;">
-n_deleted_bases_per_base
-</td>
-<td style="text-align:left;">
-0.0169
-</td>
-<td style="text-align:left;">
-1.5
-</td>
-<td style="text-align:left;">
-0.133
-</td>
-<td style="text-align:left;">
-</td>
-</tr>
-</tbody>
-</table>
-<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
-<caption>
-6226-CT-0014
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-sample_id
-</th>
-<th style="text-align:left;">
-term
-</th>
-<th style="text-align:left;">
-estimate
-</th>
-<th style="text-align:left;">
-statistic
-</th>
-<th style="text-align:left;">
-p.value
-</th>
-<th style="text-align:left;">
-signif
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-6226-CT-0014
-</td>
-<td style="text-align:left;">
-gc_proportion
-</td>
-<td style="text-align:left;">
--1.31
-</td>
-<td style="text-align:left;">
--75.6
-</td>
-<td style="text-align:left;">
-0
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0014
-</td>
-<td style="text-align:left;">
-avg_qual
-</td>
-<td style="text-align:left;">
-0.305
-</td>
-<td style="text-align:left;">
-14
-</td>
-<td style="text-align:left;">
-2.52e-44
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0014
-</td>
-<td style="text-align:left;">
-n_dels_per_base
-</td>
-<td style="text-align:left;">
-0.308
-</td>
-<td style="text-align:left;">
-13.8
-</td>
-<td style="text-align:left;">
-4.46e-43
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0014
-</td>
-<td style="text-align:left;">
-n_deleted_bases_per_base
-</td>
-<td style="text-align:left;">
-0.0526
-</td>
-<td style="text-align:left;">
-3.41
-</td>
-<td style="text-align:left;">
-0.000658
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-</tbody>
-</table>
-<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
-<caption>
-6226-CT-0015
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-sample_id
-</th>
-<th style="text-align:left;">
-term
-</th>
-<th style="text-align:left;">
-estimate
-</th>
-<th style="text-align:left;">
-statistic
-</th>
-<th style="text-align:left;">
-p.value
-</th>
-<th style="text-align:left;">
-signif
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-6226-CT-0015
-</td>
-<td style="text-align:left;">
-gc_proportion
-</td>
-<td style="text-align:left;">
--1.44
 </td>
 <td style="text-align:left;">
 -44.7
@@ -4416,19 +4646,19 @@ gc_proportion
 </tr>
 <tr>
 <td style="text-align:left;">
-6226-CT-0015
+6226-CT-0018
 </td>
 <td style="text-align:left;">
 avg_qual
 </td>
 <td style="text-align:left;">
-0.283
+0.167
 </td>
 <td style="text-align:left;">
-6.89
+6
 </td>
 <td style="text-align:left;">
-5.55e-12
+2.02e-09
 </td>
 <td style="text-align:left;">
 ***
@@ -4436,19 +4666,19 @@ avg_qual
 </tr>
 <tr>
 <td style="text-align:left;">
-6226-CT-0015
+6226-CT-0018
 </td>
 <td style="text-align:left;">
 n_dels_per_base
 </td>
 <td style="text-align:left;">
-0.19
+0.114
 </td>
 <td style="text-align:left;">
-3.75
+3.78
 </td>
 <td style="text-align:left;">
-0.000178
+0.000158
 </td>
 <td style="text-align:left;">
 ***
@@ -4456,19 +4686,39 @@ n_dels_per_base
 </tr>
 <tr>
 <td style="text-align:left;">
-6226-CT-0015
+6226-CT-0018
 </td>
 <td style="text-align:left;">
 n_deleted_bases_per_base
 </td>
 <td style="text-align:left;">
-0.17
+0.0385
 </td>
 <td style="text-align:left;">
-4.12
+1.82
 </td>
 <td style="text-align:left;">
-3.83e-05
+0.0692
+</td>
+<td style="text-align:left;">
+.
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+6226-CT-0018
+</td>
+<td style="text-align:left;">
+len
+</td>
+<td style="text-align:left;">
+-0.636
+</td>
+<td style="text-align:left;">
+-16.4
+</td>
+<td style="text-align:left;">
+3.83e-60
 </td>
 <td style="text-align:left;">
 ***
@@ -4476,138 +4726,28 @@ n_deleted_bases_per_base
 </tr>
 </tbody>
 </table>
-<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
-<caption>
-6226-CT-0018
-</caption>
-<thead>
-<tr>
-<th style="text-align:left;">
-sample_id
-</th>
-<th style="text-align:left;">
-term
-</th>
-<th style="text-align:left;">
-estimate
-</th>
-<th style="text-align:left;">
-statistic
-</th>
-<th style="text-align:left;">
-p.value
-</th>
-<th style="text-align:left;">
-signif
-</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td style="text-align:left;">
-6226-CT-0018
-</td>
-<td style="text-align:left;">
-gc_proportion
-</td>
-<td style="text-align:left;">
--1.42
-</td>
-<td style="text-align:left;">
--50.5
-</td>
-<td style="text-align:left;">
-0
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0018
-</td>
-<td style="text-align:left;">
-avg_qual
-</td>
-<td style="text-align:left;">
-0.0946
-</td>
-<td style="text-align:left;">
-3.45
-</td>
-<td style="text-align:left;">
-0.000553
-</td>
-<td style="text-align:left;">
-***
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0018
-</td>
-<td style="text-align:left;">
-n_dels_per_base
-</td>
-<td style="text-align:left;">
--0.0808
-</td>
-<td style="text-align:left;">
--2.8
-</td>
-<td style="text-align:left;">
-0.0051
-</td>
-<td style="text-align:left;">
-**
-</td>
-</tr>
-<tr>
-<td style="text-align:left;">
-6226-CT-0018
-</td>
-<td style="text-align:left;">
-n_deleted_bases_per_base
-</td>
-<td style="text-align:left;">
-0.0371
-</td>
-<td style="text-align:left;">
-1.81
-</td>
-<td style="text-align:left;">
-0.0705
-</td>
-<td style="text-align:left;">
-.
-</td>
-</tr>
-</tbody>
-</table></li>
-</ul>
-<p>These results indicate that these highly-mutated mtDNA sequences have significantly lower GC content than the main mtDNA population, a lower mean sequencing quality, and less frequent deletion events. Despite less frequent, however, those deletions are significantly larger in extension in the highly mutated mtDNA species.</p>
+<p>These results indicate that these highly-mutated mtDNA sequences have significantly lower GC content than the main mtDNA population in all samples. Interestingly, the average sequencing quality is higher in the highly-mutated mtDNA sequences, supporting the notion that these are not just sequencing artifacts. This is observed in all samples with the exception of the PFC, where this was not significant. The number of deletion events was also significantly associated with the high mutational load in every sample, although without a consistent direction of association. While in most samples the number of deletions was hight in highly-mutated mtDNA reads, the two brain tissues (cerebellum and PFC) exhibited the opposing trend, i.e., a decreased number od deletion events in highly-mutated mtDNA reads. The size of the mutation events had a smaller association with the highly-mutated status, and was only statistically significant in kidney and colon, where it was positively associated.</p>
 <p>We need to assess two things: 1) is this due to a sequencing quality bias? 2) Do these results still hold if we remove really short sequences?</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true"></a><span class="co"># lapply(unique(snvsPerRead$sample_id), function(sid) {</span></span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true"></a><span class="co">#     glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base + read_length,</span></span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true"></a><span class="co">#         HERE</span></span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true"></a><span class="co">#         data = filter(Data, sample_id == sid) %&gt;%</span></span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true"></a><span class="co">#             #filter(read_length &gt;= 1000) %&gt;%</span></span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true"></a><span class="co">#             mutate(gc_proportion = scale2(gc_proportion), </span></span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true"></a><span class="co">#                    avg_qual = scale2(avg_qual), </span></span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true"></a><span class="co">#                    n_dels_per_base = scale2(n_dels_per_base), </span></span>
-<span id="cb26-9"><a href="#cb26-9" aria-hidden="true"></a><span class="co">#                    read_length = scale2(read_length),</span></span>
-<span id="cb26-10"><a href="#cb26-10" aria-hidden="true"></a><span class="co">#                    n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),</span></span>
-<span id="cb26-11"><a href="#cb26-11" aria-hidden="true"></a><span class="co">#         family = &quot;binomial&quot;) %&gt;%</span></span>
-<span id="cb26-12"><a href="#cb26-12" aria-hidden="true"></a><span class="co">#     broom::tidy() %&gt;% filter(term != &quot;(Intercept)&quot;) %&gt;%</span></span>
-<span id="cb26-13"><a href="#cb26-13" aria-hidden="true"></a><span class="co">#     mutate(sample_id = sid) %&gt;%</span></span>
-<span id="cb26-14"><a href="#cb26-14" aria-hidden="true"></a><span class="co">#     select(sample_id, everything())</span></span>
-<span id="cb26-15"><a href="#cb26-15" aria-hidden="true"></a><span class="co"># }) %&gt;% Reduce(&quot;bind_rows&quot;, .)</span></span>
-<span id="cb26-16"><a href="#cb26-16" aria-hidden="true"></a><span class="co">#     select(sample_id, estimate, statistic, p.value) %&gt;%</span></span>
-<span id="cb26-17"><a href="#cb26-17" aria-hidden="true"></a><span class="co">#     mutate(estimate = formatC(estimate, digits = 3), statistic = formatC(statistic, digits = 3), p.value = formatC(p.value, digits = 3)) %&gt;%</span></span>
-<span id="cb26-18"><a href="#cb26-18" aria-hidden="true"></a><span class="co">#     kable(caption = &quot;Association between different read statics and the highly-mutated mtDNA&quot;) %&gt;%</span></span>
-<span id="cb26-19"><a href="#cb26-19" aria-hidden="true"></a><span class="co">#     kable_styling(bootstrap_options = &quot;striped&quot;, full_width = FALSE)</span></span>
-<span id="cb26-20"><a href="#cb26-20" aria-hidden="true"></a><span class="co"># </span></span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true"></a><span class="co">#lapply(unique(snvsPerRead$sample_id), function(sid) {</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true"></a><span class="co">#    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base + read_length,</span></span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true"></a><span class="co">#        HERE</span></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true"></a><span class="co">#        data = filter(Data, sample_id == sid) %&gt;%</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true"></a><span class="co">#            #filter(read_length &gt;= 1000) %&gt;%</span></span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true"></a><span class="co">#            mutate(gc_proportion = scale2(gc_proportion), </span></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true"></a><span class="co">#                   avg_qual = scale2(avg_qual), </span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true"></a><span class="co">#                   n_dels_per_base = scale2(n_dels_per_base), </span></span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true"></a><span class="co">#                   read_length = scale2(read_length),</span></span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true"></a><span class="co">#                   n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),</span></span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true"></a><span class="co">#        family = &quot;binomial&quot;) %&gt;%</span></span>
+<span id="cb26-12"><a href="#cb26-12" aria-hidden="true"></a><span class="co">#    broom::tidy() %&gt;% filter(term != &quot;(Intercept)&quot;) %&gt;%</span></span>
+<span id="cb26-13"><a href="#cb26-13" aria-hidden="true"></a><span class="co">#    mutate(sample_id = sid) %&gt;%</span></span>
+<span id="cb26-14"><a href="#cb26-14" aria-hidden="true"></a><span class="co">#    select(sample_id, everything())</span></span>
+<span id="cb26-15"><a href="#cb26-15" aria-hidden="true"></a><span class="co">#}) %&gt;% Reduce(&quot;bind_rows&quot;, .)</span></span>
+<span id="cb26-16"><a href="#cb26-16" aria-hidden="true"></a><span class="co">#    select(sample_id, estimate, statistic, p.value) %&gt;%</span></span>
+<span id="cb26-17"><a href="#cb26-17" aria-hidden="true"></a><span class="co">#    mutate(estimate = formatC(estimate, digits = 3), statistic = formatC(statistic, digits = 3), p.value = formatC(p.value, digits = 3)) %&gt;%</span></span>
+<span id="cb26-18"><a href="#cb26-18" aria-hidden="true"></a><span class="co">#    kable(caption = &quot;Association between different read statics and the highly-mutated mtDNA&quot;) %&gt;%</span></span>
+<span id="cb26-19"><a href="#cb26-19" aria-hidden="true"></a><span class="co">#    kable_styling(bootstrap_options = &quot;striped&quot;, full_width = FALSE)</span></span>
+<span id="cb26-20"><a href="#cb26-20" aria-hidden="true"></a><span class="co">#</span></span></code></pre></div>
 <div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true"></a><span class="co">## varFiles &lt;- paste0(&quot;../results/&quot;, filter(Metadata, platform == &quot;ont&quot;)$sample_id, &quot;_chrM_combined_filt_splt.vcf&quot;)</span></span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true"></a><span class="co">## names(varFiles) &lt;- filter(Metadata, platform == &quot;ont&quot;)$sample_id</span></span>
 <span id="cb27-3"><a href="#cb27-3" aria-hidden="true"></a><span class="co">## </span></span>

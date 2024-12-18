@@ -685,6 +685,8 @@ in the alignment divided by the read length).
 
 highly mutated mtDNA ~ GC_proportion + Avg_read_qual + n_deletions + prop_del_bases
 
+(All covariates are standardized to render coefficients comparable).
+
 ```{r}
 delFiles1 <- paste0("../results/deletions/",
                     filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
@@ -739,11 +741,12 @@ nb_dels <- Del %>%
 Data <- inner_join(Data %>% select(sample_id, tissue, read_id = read_id, everything()), nb_dels, by = join_by(sample_id, read_id))
 
 Tests <- lapply(unique(snvsPerRead$sample_id), function(sid) {
-    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base,
+    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base + len,
         data = filter(Data, sample_id == sid) %>%
             mutate(gc_proportion = scale2(gc_proportion), 
                    avg_qual = scale2(avg_qual), 
                    n_dels_per_base = scale2(n_dels_per_base), 
+                   len = scale2(len),
                    n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),
         family = "binomial") %>%
     broom::tidy() %>% filter(term != "(Intercept)") %>%
@@ -757,7 +760,7 @@ for (Test in Tests) {
         mutate(estimate = formatC(estimate, digits = 3), 
                statistic = formatC(statistic, digits = 3), 
                p.value = formatC(p.value, digits = 3)) %>%
-        kable(caption = paste0(Test$sample_id[1])) %>%
+        kable(caption = paste0(Test$sample_id[1], " (", Metadata[Metadata$sample_id == Test$sample_id[1],]$tissue[1], ")")) %>%
         kable_styling(bootstrap_options = "striped", full_width = FALSE) %>%
         print()
     cat("\n")
@@ -765,36 +768,45 @@ for (Test in Tests) {
 ```
 
 These results indicate that these highly-mutated mtDNA sequences have
-significantly lower GC content than the main mtDNA population, a lower mean
-sequencing quality, and less frequent deletion events. Despite less frequent,
-however, those deletions are significantly larger in extension in the highly
-mutated mtDNA species.
+significantly lower GC content than the main mtDNA population in all samples.
+Interestingly, the average sequencing quality is higher in the highly-mutated
+mtDNA sequences, supporting the notion that these are not just sequencing
+artifacts. This is observed in all samples with the exception of the PFC, where
+this was not significant. The number of deletion events was also significantly
+associated with the high mutational load in every sample, although without a
+consistent direction of association. While in most samples the number of
+deletions was hight in highly-mutated mtDNA reads, the two brain tissues
+(cerebellum and PFC) exhibited the opposing trend, i.e., a decreased number od
+deletion events in highly-mutated mtDNA reads. The size of the mutation events
+had a smaller association with the highly-mutated status, and was only
+statistically significant in kidney and colon, where it was positively
+associated.
 
 We need to assess two things: 1) is this due to a sequencing quality bias? 2)
 Do these results still hold if we remove really short sequences?
 
 
 ```{r}
-# lapply(unique(snvsPerRead$sample_id), function(sid) {
-#     glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base + read_length,
-#         HERE
-#         data = filter(Data, sample_id == sid) %>%
-#             #filter(read_length >= 1000) %>%
-#             mutate(gc_proportion = scale2(gc_proportion), 
-#                    avg_qual = scale2(avg_qual), 
-#                    n_dels_per_base = scale2(n_dels_per_base), 
-#                    read_length = scale2(read_length),
-#                    n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),
-#         family = "binomial") %>%
-#     broom::tidy() %>% filter(term != "(Intercept)") %>%
-#     mutate(sample_id = sid) %>%
-#     select(sample_id, everything())
-# }) %>% Reduce("bind_rows", .)
-#     select(sample_id, estimate, statistic, p.value) %>%
-#     mutate(estimate = formatC(estimate, digits = 3), statistic = formatC(statistic, digits = 3), p.value = formatC(p.value, digits = 3)) %>%
-#     kable(caption = "Association between different read statics and the highly-mutated mtDNA") %>%
-#     kable_styling(bootstrap_options = "striped", full_width = FALSE)
-# 
+#lapply(unique(snvsPerRead$sample_id), function(sid) {
+#    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base + read_length,
+#        HERE
+#        data = filter(Data, sample_id == sid) %>%
+#            #filter(read_length >= 1000) %>%
+#            mutate(gc_proportion = scale2(gc_proportion), 
+#                   avg_qual = scale2(avg_qual), 
+#                   n_dels_per_base = scale2(n_dels_per_base), 
+#                   read_length = scale2(read_length),
+#                   n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),
+#        family = "binomial") %>%
+#    broom::tidy() %>% filter(term != "(Intercept)") %>%
+#    mutate(sample_id = sid) %>%
+#    select(sample_id, everything())
+#}) %>% Reduce("bind_rows", .)
+#    select(sample_id, estimate, statistic, p.value) %>%
+#    mutate(estimate = formatC(estimate, digits = 3), statistic = formatC(statistic, digits = 3), p.value = formatC(p.value, digits = 3)) %>%
+#    kable(caption = "Association between different read statics and the highly-mutated mtDNA") %>%
+#    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+#
 ```
 
 ```{r}
