@@ -35,7 +35,7 @@ library("GenomicRanges")
 # require("ggfortify")
 # require("RColorBrewer")
 # require("ComplexHeatmap")
-# require("ggpubr")
+require("ggpubr")
 # #require("corrplot")
 # #require("colorspace")
 
@@ -780,34 +780,11 @@ deletions was hight in highly-mutated mtDNA reads, the two brain tissues
 deletion events in highly-mutated mtDNA reads. The size of the mutation events
 had a smaller association with the highly-mutated status, and was only
 statistically significant in kidney and colon, where it was positively
-associated.
+associated. Finally, the read size was negatively associated with
+highly-mutated mtDNA, i.e., longer sequences tend to have lower mutation
+frequencies (with the exception of liver, where the association was not
+statistically significant).
 
-We need to assess two things: 1) is this due to a sequencing quality bias? 2)
-Do these results still hold if we remove really short sequences?
-
-
-```{r}
-#lapply(unique(snvsPerRead$sample_id), function(sid) {
-#    glm(high_mut_load ~ gc_proportion + avg_qual + n_dels_per_base + n_deleted_bases_per_base + read_length,
-#        HERE
-#        data = filter(Data, sample_id == sid) %>%
-#            #filter(read_length >= 1000) %>%
-#            mutate(gc_proportion = scale2(gc_proportion), 
-#                   avg_qual = scale2(avg_qual), 
-#                   n_dels_per_base = scale2(n_dels_per_base), 
-#                   read_length = scale2(read_length),
-#                   n_deleted_bases_per_base = scale2(n_deleted_bases_per_base)),
-#        family = "binomial") %>%
-#    broom::tidy() %>% filter(term != "(Intercept)") %>%
-#    mutate(sample_id = sid) %>%
-#    select(sample_id, everything())
-#}) %>% Reduce("bind_rows", .)
-#    select(sample_id, estimate, statistic, p.value) %>%
-#    mutate(estimate = formatC(estimate, digits = 3), statistic = formatC(statistic, digits = 3), p.value = formatC(p.value, digits = 3)) %>%
-#    kable(caption = "Association between different read statics and the highly-mutated mtDNA") %>%
-#    kable_styling(bootstrap_options = "striped", full_width = FALSE)
-#
-```
 
 ```{r}
 ## varFiles <- paste0("../results/", filter(Metadata, platform == "ont")$sample_id, "_chrM_combined_filt_splt.vcf")
@@ -889,60 +866,126 @@ A first rough estimate of the presence and abundance of deletions is the length
 of the mtDNA-aligned reads.
 
 The density plots show the distribution of ONT read lengths aligned to either
-the mtDNA (rCRS) or the chr22. The colours are the same used in the previous
-plot. The vertical dashed line indicates the rCRS length (16,569).
+the mtDNA (rCRS) or the chr22. 
+The vertical dashed line indicates the rCRS length (16,569).
 
-```{r, fig.width=6, fig.height=7, echo=FALSE}
-# lenFiles1 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chrM.txt")
-# names(lenFiles1) <- filter(Metadata, platform == "ont")$sample_id
-# lenFiles2 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chrM_shifted.txt")
-# names(lenFiles2) <- filter(Metadata, platform == "ont")$sample_id
-# lenFiles22 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chr22.txt")
-# names(lenFiles22) <- filter(Metadata, platform == "ont")$sample_id
-# 
-# Len1 <- lapply(names(lenFiles1), function(sid) {
-#     read_tsv(lenFiles1[sid], col_names = FALSE, col_types = "ci") %>%
-#         mutate(sample_id = sid) %>%
-#         select(readname = X1, readlength = X2, sample_id)
-# }) %>% Reduce("bind_rows", .)
-# Len2 <- lapply(names(lenFiles2), function(sid) {
-#     read_tsv(lenFiles2[sid], col_names = FALSE, col_types = "ci") %>%
-#         mutate(sample_id = sid) %>%
-#         select(readname = X1, readlength = X2, sample_id)
-# }) %>% Reduce("bind_rows", .)
-# Len <- distinct(bind_rows(Len1, Len2)) %>% mutate(chr = "rCRS")
-# rm(Len1, Len2)
-# invisible(gc())
-# Len22 <- lapply(names(lenFiles22), function(sid) {
-#     read_tsv(lenFiles22[sid], col_names = FALSE, col_types = "ci") %>%
-#         mutate(sample_id = sid) %>%
-#         select(readname = X1, readlength = X2, sample_id)
-# }) %>% Reduce("bind_rows", .) %>% mutate(chr = "chr22")
-# Len <- bind_rows(Len, Len22)
-# rm(Len22)
-# invisible(gc())
-# 
-# Plot2 <- Len %>% left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-#     ggplot(aes(x = readlength, group = sample_id, colour = individual_id)) +
-#     geom_density(bw = .02) +
-#     geom_vline(xintercept = 16569, linetype = 2) +
-#     facet_grid(chr ~ .) +
-#     scale_x_log10() +
-#     theme_cowplot() +
-#     theme(legend.position = "none") +
-#     ggtitle("Distribution of ONT read lengths")
-# 
-# Plot2
-# 
-# # svg("./Figs/dist_read_length_ONT_all.svg", height = 6, width = 12)
-# # Plot2
-# # invisible(dev.off())
-# invisible(png("./Figs/dist_read_length_ONT_all.png", height = 1000, width = 2000, res = 150))
+```{r, fig.width=8, fig.height=7, echo=FALSE}
+lenFiles1 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chrM.txt")
+names(lenFiles1) <- filter(Metadata, platform == "ont")$sample_id
+lenFiles2 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chrM_shifted.txt")
+names(lenFiles2) <- filter(Metadata, platform == "ont")$sample_id
+lenFiles22 <- paste0("../results/readlengths/", filter(Metadata, platform == "ont")$sample_id, "_chr22.txt")
+names(lenFiles22) <- filter(Metadata, platform == "ont")$sample_id
+
+Len1 <- lapply(names(lenFiles1), function(sid) {
+    read_tsv(lenFiles1[sid], col_names = FALSE, col_types = "ci") %>%
+        mutate(sample_id = sid) %>%
+        select(readname = X1, readlength = X2, sample_id)
+}) %>% Reduce("bind_rows", .)
+Len2 <- lapply(names(lenFiles2), function(sid) {
+    read_tsv(lenFiles2[sid], col_names = FALSE, col_types = "ci") %>%
+        mutate(sample_id = sid) %>%
+        select(readname = X1, readlength = X2, sample_id)
+}) %>% Reduce("bind_rows", .)
+Len <- distinct(bind_rows(Len1, Len2)) %>% mutate(chr = "mtDNA")
+rm(Len1, Len2)
+invisible(gc())
+Len22 <- lapply(names(lenFiles22), function(sid) {
+    read_tsv(lenFiles22[sid], col_names = FALSE, col_types = "ci") %>%
+        mutate(sample_id = sid) %>%
+        select(readname = X1, readlength = X2, sample_id)
+}) %>% Reduce("bind_rows", .) %>% mutate(chr = "chr22")
+Len <- bind_rows(Len, Len22)
+rm(Len22)
+invisible(gc())
+
+Plot2 <- Len %>% left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    filter(individual_id %in% c("a", "b")) %>%
+    ggplot(aes(x = readlength, group = sample_id, colour = tissue)) +
+    geom_density(bw = .02) +
+    geom_vline(xintercept = 16569, linetype = 2) +
+    facet_grid(chr ~ .) +
+    scale_x_log10() +
+    theme_cowplot() +
+    ggtitle("Distribution of ONT read lengths")
+
+Plot2
+
+# svg("./Figs/dist_read_length_ONT_all.svg", height = 6, width = 12)
 # Plot2
 # invisible(dev.off())
+invisible(png("./Figs/dist_read_length_ONT_all.png", height = 1000, width = 2000, res = 150))
+Plot2
+invisible(dev.off())
 ```
 
-## Plot the breakpoints.
+## Comparison of deletions across tissues
+
+We can first formally compare the sizes of the reads across tissues.
+
+```{r, fig.height=6, fig.width=7}
+#require('rstatix')
+#compare_means(readlength ~ tissue, data = Len %>% 
+#              left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%    
+#              filter(individual_id %in% c("a", "b")))
+Tissues <- Metadata %>% filter(individual_id %in% c("a", "b")) %>% pull(tissue)
+my_comparisons <- lapply(1:(length(Tissues)-1), function(i) lapply((i+1):length(Tissues), function(j) return(c(Tissues[i],Tissues[j])))) %>%
+    unlist(recursive = F)
+
+lenBoxPlot <- Len %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    ggplot(aes(x = tissue, y = log10(readlength))) +
+    geom_boxplot(outlier.shape = NA)
+
+lenBoxPlot
+
+Len %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    mutate(log10_readlength = log10(readlength)) %>%
+    filter(!is.infinite(log10_readlength)) %>%
+    compare_means(formula = log10_readlength ~ tissue, data = ., comparisons = my_comparisons, label = "p.signif") %>%
+    kable(caption = "Comparisong read length across tissues") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+lm(formula = log10_readlength ~ tissue, data = Len %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    mutate(log10_readlength = log10(readlength)) %>%
+    filter(!is.infinite(log10_readlength))) %>%
+    broom::tidy() %>%
+    kable(caption = "Linear model comparing  read length across tissues") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+
+Now we compare the distributions of deletion lengths ( >100) across tissues.
+
+```{r, fig.height=6, fig.width=7}
+delBoxPlot <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    ggplot(aes(x = tissue, y = log10(del_size))) +
+    geom_boxplot(outlier.shape = NA)
+
+delBoxPlot
+
+lm(formula = log10_del_size ~ tissue + read_length, data = 
+    Del %>%
+        mutate(del_size = ifelse(del_start <= del_end, 
+                             del_end - del_start, 
+                             del_end + (16569 - del_start))) %>%
+        filter(del_size >= 100) %>%
+        left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+        mutate(log10_del_size = log10(del_size))) %>%
+    broom::tidy() %>%
+    kable(caption = "Linear model comparing deletion size across tissues") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+
+## Deletion breakpoints
 
 Here we plot the deletions larger than 100bp in the mtDNA, based on single
 reads from the ONT sequencing.
