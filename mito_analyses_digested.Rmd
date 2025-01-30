@@ -764,7 +764,7 @@ There are two regions in the mtDNA that seem to harbour a higher number of
 deletions than the rest for most of the samples. The location of these two
 deletions is del_A: 6,261-6,380; del_B: 11,041-11,219.
 
-```{r}
+```{r, fig.height=12, fig.height=10}
 min_del_len <- 100
 
 seqinfo <- Seqinfo(
@@ -804,7 +804,7 @@ hang_right <- hanging %>%
     makeGRangesFromDataFrame(seqinfo = seqinfo, keep.extra.columns = TRUE)
 Del_GR <- c(non_hanging, hang_left, hang_right)
 rm(hanging, non_hanging, hang_left, hang_right)
-gc()
+invisible(gc())
 
 # del_A
 st_end_A <- c(6261, 6380)
