@@ -760,8 +760,176 @@ for (SID in unique(Del$sample_id)) {
 circ_del_cov(sid = "6226-CT-0010", min_del_len = 100, alpha = 0.5)
 ```
 
+There are two regions in the mtDNA that seem to harbour a higher number of
+deletions than the rest for most of the samples. The location of these two
+deletions is del_A: 6,261-6,380; del_B: 11,041-11,219.
+
+```{r}
+min_del_len <- 100
+
+seqinfo <- Seqinfo(
+    seqnames = c("mtDNA"),
+    seqlengths = c(16569),
+    isCircular = c(TRUE),
+    genome = "hg38"
+)
+
+non_hanging <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= min_del_len) %>%
+    mutate(seqnames = factor("mtDNA")) %>%
+    mutate(sample_id = as.factor(sample_id)) %>%
+    select(seqnames, start = del_start, end = del_end, sample_id) %>%
+    filter(start < end) %>%
+    makeGRangesFromDataFrame(seqinfo = seqinfo, keep.extra.columns = TRUE)
+
+hanging <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= min_del_len) %>%
+    mutate(seqnames = factor("mtDNA")) %>%
+    mutate(sample_id = as.factor(sample_id)) %>%
+    select(seqnames, start = del_start, end = del_end, sample_id) %>%
+    filter(start > end)
+
+hang_left <- hanging %>%
+    mutate(end = 16569) %>%
+    makeGRangesFromDataFrame(seqinfo = seqinfo, keep.extra.columns = TRUE)
+
+hang_right <- hanging %>%
+    mutate(start = 1) %>%
+    makeGRangesFromDataFrame(seqinfo = seqinfo, keep.extra.columns = TRUE)
+Del_GR <- c(non_hanging, hang_left, hang_right)
+rm(hanging, non_hanging, hang_left, hang_right)
+gc()
+
+# del_A
+st_end_A <- c(6261, 6380)
+Plot_del_A <- lapply(split(Del_GR, Del_GR$sample_id), function(x) {tibble(pos = 1:16569, cov = as.numeric(coverage(x)$mtDNA))}) %>%
+    bind_rows(.id = "sample_id") %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    ggplot() +
+    geom_col(aes(x = pos, y = cov)) +
+    geom_vline(xintercept = st_end_A, color = "red") +
+    facet_wrap(~tissue, ncol = 1, scales = "free_y") +
+    xlim(c(st_end_A[1]-10, st_end_A[2]+10))
+
+# del_B
+
+st_end_B <- c(11041, 11219)
+Plot_del_B <- lapply(split(Del_GR, Del_GR$sample_id), function(x) {tibble(pos = 1:16569, cov = as.numeric(coverage(x)$mtDNA))}) %>%
+    bind_rows(.id = "sample_id") %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    ggplot() +
+    geom_col(aes(x = pos, y = cov)) +
+    geom_vline(xintercept = st_end_B, color = "red") +
+    facet_wrap(~tissue, ncol = 1, scales = "free_y") +
+    xlim(c(st_end_B[1]-10, st_end_B[2]+10))
+
+Plot_del_A
+
+# invisible(svg("./Figs/del_A.svg", height = 12, width = 12))
+# Plot_del_A
+# invisible(dev.off())
+invisible(png("./Figs/del_A.png", height = 2000, width = 2000, res = 150))
+Plot_del_A
+invisible(dev.off())
+
+Plot_del_B
+
+# invisible(svg("./Figs/del_B.svg", height = 12, width = 12))
+# Plot_del_B
+# invisible(dev.off())
+invisible(png("./Figs/del_B.png", height = 2000, width = 2000, res = 150))
+Plot_del_B
+invisible(dev.off())
+```
+
+These regions are covered by deletions but often the deletions covering them
+are actually spanning longer segments. We can try to quantify (1) how common
+these regions are "missing" from the mtDNA (i.e., also accounting for longer
+deletions that span over them), and (2) how relatively common these deletions
+are with regard to the other deletion events in the mtDNA.
+
+In order to estimate (1), we simply divide the __deletion coverage__ in that
+region with the __sequencing coverage__ in the region corresponding to the RNR1
+gene, which has consistently low deletion levels in all samples. 
+
+```{r}
+med_rnr1_cov <- Cov %>% left_join(Metadata %>% select(sample_id, tissue)) %>%
+    filter(Pos > 648, Pos < 1601) %>%
+    group_by(tissue) %>%
+    summarise(median_rnr1_cov = median(Cov))
+# 1) 
+med_del_cov_A <- lapply(split(Del_GR, Del_GR$sample_id), function(x) {tibble(pos = 1:16569, cov = as.numeric(coverage(x)$mtDNA))}) %>%
+    bind_rows(.id = "sample_id") %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    filter(pos >= st_end_A[1]+1, pos <= st_end_A[2]-1) %>%
+    group_by(tissue) %>%
+    summarise(median_delA_cov = median(cov))
+med_del_cov_B <- lapply(split(Del_GR, Del_GR$sample_id), function(x) {tibble(pos = 1:16569, cov = as.numeric(coverage(x)$mtDNA))}) %>%
+    bind_rows(.id = "sample_id") %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    filter(pos >= st_end_B[1]+1, pos <= st_end_B[2]-1) %>%
+    group_by(tissue) %>%
+    summarise(median_delB_cov = median(cov))
+
+full_join(med_del_cov_A, med_del_cov_B) %>%
+    left_join(med_rnr1_cov) %>%
+    mutate(prop_del_A = median_delA_cov/median_rnr1_cov, rop_del_B = median_delB_cov/median_rnr1_cov) %>%
+    kable(caption = "(1) Relative del_A and del_B abundances compared with the coverage") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
 
 
+To estimate (2), we divide the __number of the specific deletion event__ (del_A
+or del_B, within +10/-10bps) by the __total number of deletion events__ found
+in the sample.
+
+```{r}
+nb_del <- Del %>% mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    group_by(tissue) %>%
+    summarise(nb_del = n())
+
+nb_del_A <- Del %>% filter(del_start > st_end_A[1]-10, del_start < st_end_A[1]+10,
+               del_end > st_end_A[2]-10, del_end < st_end_A[2]+10) %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    group_by(tissue) %>%
+    summarise(nb_del_A = n())
 
 
+nb_del_B <- Del %>% filter(del_start > st_end_B[1]-10, del_start < st_end_B[1]+10,
+               del_end > st_end_B[2]-10, del_end < st_end_B[2]+10) %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    group_by(tissue) %>%
+    summarise(nb_del_B = n())
 
+inner_join(nb_del_A, nb_del_B) %>%
+    left_join(nb_del) %>%
+    mutate(prop_del_A = nb_del_A / nb_del, prop_del_B = nb_del_B / nb_del) %>%
+    kable(caption = "(2a) Relative del_A and del_B abundances compared to number of deletion events") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
+
+Alternatively, we also divide the number of del_A and del_B deletions by the
+total number of mtDNA reads.
+
+```{r}
+nb_reads <- Len %>% select(readname, sample_id) %>%
+    left_join(Metadata %>% select(sample_id, tissue)) %>%
+    group_by(tissue) %>%
+    summarise(nb_reads = n())
+
+inner_join(nb_del_A, nb_del_B) %>%
+    left_join(nb_reads) %>%
+    mutate(prop_del_A = nb_del_A / nb_reads, prop_del_B = nb_del_B / nb_reads) %>%
+    kable(caption = "(2b) Relative del_A and del_B abundances compared to number of reads") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+```
