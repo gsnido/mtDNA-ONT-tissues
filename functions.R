@@ -169,7 +169,7 @@ circ_arcs <- function(sid, min_del_len = 0, alpha = 0.2) {
 circ_del_cov <- function(sid, min_del_len = 0, alpha = 0.5) {
     circos.clear()
     col_text <- "grey40"
-    circos.par("track.height" = 0.1, gap.degree = 1, cell.padding = c(0, 0, 0, 0), start.degree = 90)
+    circos.par(circle.margin = 0.2, "track.height" = 0.1, gap.degree = 1, cell.padding = c(0, 0, 0, 0), start.degree = 90)
     circos.initialize(as.factor(rep("mtDNA", 16569)), x = 1:16569)
     
     circos.track(ylim = c(0,1), panel.fun = function(x, y) {
@@ -183,7 +183,7 @@ circ_del_cov <- function(sid, min_del_len = 0, alpha = 0.5) {
     # axis
     brk <- c(1, seq(501, 16001, by = 500), 16569)
     circos.track(track.index = get.current.track.index(), panel.fun = function(x, y) {
-        circos.axis(h = "top", major.at = brk, labels.cex = 1, col = col_text,
+        circos.axis(h = "top", major.at = brk, labels.cex = .8, col = col_text,
                     labels.col = col_text, lwd = 0.7, labels.facing = "clockwise")
     }, bg.border = FALSE)
     
@@ -202,10 +202,10 @@ circ_del_cov <- function(sid, min_del_len = 0, alpha = 0.5) {
         circos.rect(xleft = Xleft, ybottom = Ybottom,
                     xright = Xright, ytop = Ytop,
                     col = Col, border = col_text)
-        circos.text(x = Xmid, y = Ymid, labels = Labels, cex = .7, 
+        circos.text(x = Xmid, y = Ymid, labels = Labels, cex = .6, 
                     col = ColText,
                     facing = "bending.inside", niceFacing = TRUE)
-    }, bg.border = NA, track.height = 0.05)
+    }, bg.border = NA, track.height = 0.06)
     
     seqinfo <- Seqinfo(
         seqnames = c("mtDNA"),
