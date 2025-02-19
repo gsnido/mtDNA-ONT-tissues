@@ -549,33 +549,47 @@ Tissues <- Metadata %>% filter(individual_id %in% c("a", "b")) %>% pull(tissue)
 my_comparisons <- lapply(1:(length(Tissues)-1), function(i) lapply((i+1):length(Tissues), function(j) return(c(Tissues[i],Tissues[j])))) %>%
     unlist(recursive = F)
 
+Mean_readlengths <- Len %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    filter(readlength != 0, chr == "mtDNA") %>%
+    group_by(individual_id, tissue) %>%
+    summarise(mean_readlength = mean(readlength), sd_readlength = sd(readlength), .groups = "drop") %>%
+    arrange(mean_readlength)
+
+Mean_readlengths %>%
+    kable(caption = "Mean read lengths in all tissues") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
 lenBoxPlot <- Len %>%
     left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-    ggplot(aes(x = tissue, y = log10(readlength))) +
-    geom_boxplot(outlier.shape = NA)
+    filter(readlength != 0, chr == "mtDNA") %>%
+    mutate(tissue = factor(tissue, levels = unique(Mean_readlengths$tissue))) %>%
+    ggplot(aes(x = tissue, y = readlength)) +
+    geom_violin() +
+    stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.5, fatten = 1, color = "red") +
+    scale_y_log10()
 
 lenBoxPlot
+invisible(svg("./Figs/read_length_violin_plot.svg", height = 6, width = 12))
+lenBoxPlot
+invisible(dev.off())
 
 Len %>%
     left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-    mutate(log10_readlength = log10(readlength)) %>%
-    filter(!is.infinite(log10_readlength)) %>%
-    compare_means(formula = log10_readlength ~ tissue, data = ., comparisons = my_comparisons, label = "p.signif") %>%
-    kable(caption = "Comparisong read length across tissues") %>% 
-    kable_styling(bootstrap_options = "striped", full_width = FALSE)
-```
+    filter(readlength != 0, chr == "mtDNA") %>%
+    kruskal.test(formula = readlength ~ tissue, data = .)
 
-Using a linear model too:
 
-```{r}
-lm(formula = log10_readlength ~ tissue, data = Len %>%
+
+Len %>%
     left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-    mutate(log10_readlength = log10(readlength)) %>%
-    filter(!is.infinite(log10_readlength))) %>%
-    broom::tidy() %>%
-    kable(caption = "Linear model comparing  read length across tissues") %>% 
+    filter(readlength != 0, chr == "mtDNA") %>%
+    compare_means(formula = readlength ~ tissue, data = ., comparisons = my_comparisons, label = "p.signif") %>%
+    kable(caption = "Comparison read length across tissues") %>% 
     kable_styling(bootstrap_options = "striped", full_width = FALSE)
 ```
+
 
 
 ### Deletion sizes
@@ -583,15 +597,26 @@ lm(formula = log10_readlength ~ tissue, data = Len %>%
 Now we compare the distributions of deletion sizes (>100bp) across tissues.
 
 ```{r}
+# delFiles1 <- paste0("../results/deletions/",
+#                     filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+#                     "_chrM.txt")
+# names(delFiles1) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+# #all(file.exists(delFiles1))
+# delFiles2 <- paste0("../results/deletions/",
+#                     filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+#                     "_chrM_shifted.txt")
+# names(delFiles2) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+# #all(file.exists(delFiles2))
+
 delFiles1 <- paste0("../results/deletions/",
-                    filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+                    filter(Metadata, platform == "ont")$sample_id, 
                     "_chrM.txt")
-names(delFiles1) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+names(delFiles1) <- filter(Metadata, platform == "ont")$sample_id
 #all(file.exists(delFiles1))
 delFiles2 <- paste0("../results/deletions/",
-                    filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id, 
+                    filter(Metadata, platform == "ont")$sample_id, 
                     "_chrM_shifted.txt")
-names(delFiles2) <- filter(Metadata, platform == "ont", individual_id %in% c("a","b"))$sample_id
+names(delFiles2) <- filter(Metadata, platform == "ont")$sample_id
 #all(file.exists(delFiles2))
 
 Del1 <- lapply(names(delFiles1), function(sid) {
@@ -619,19 +644,120 @@ invisible(gc())
 ```
 
 ```{r, fig.height=6, fig.width=7}
+Mean_dellengths <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    group_by(individual_id, tissue) %>%
+    summarise(mean_dellength = mean(del_size), sd_dellength = sd(del_size), .groups = "drop") %>%
+    left_join(Mean_readlengths) %>%
+    arrange(mean_dellength)
+
+Mean_dellengths %>%
+    kable(caption = "Mean deletion lengths in all tissues") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+cor.test(Mean_dellengths$mean_dellength, Mean_dellengths$mean_readlength)
+```
+
+Deletion lengths and read lengths are not significantly anticorrelated.
+
+```{r}
 delBoxPlot <- Del %>%
     mutate(del_size = ifelse(del_start <= del_end, 
                          del_end - del_start, 
                          del_end + (16569 - del_start))) %>%
     filter(del_size >= 100) %>%
     left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-    ggplot(aes(x = tissue, y = log10(del_size))) +
-    geom_boxplot(outlier.shape = NA)
+    ggplot(aes(x = tissue, y = del_size)) +
+    geom_violin() +
+    stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.5, fatten = 1, color = "red") +
+    scale_y_log10()
+    #geom_boxplot(outlier.shape = NA)
 
 delBoxPlot
+invisible(svg("./Figs/deletion_size_violin_plot.svg", height = 6, width = 12))
+delBoxPlot
+invisible(dev.off())
 ```
 
-We can formally test whether these differences are significant.
+The deletion lengths are bimodally distributed in all samples.
+
+```{r}
+require('mclust')
+require('diptest')
+
+gmm <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    group_by(tissue) %>%
+    summarise(multimodal_p = dip.test(del_size)$p.value,
+              GMM_n_clust = Mclust(del_size, G = 1:10)$G,
+              GMM_G1_mean = Mclust(del_size, G = 2)$parameters$mean[1],
+              GMM_G2_mean = Mclust(del_size, G = 2)$parameters$mean[2])
+
+gmm %>%
+    kable(caption = "Multimodality Hartigan's Dip Test p-value and GMM nb. of clusters") %>% 
+    kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+```
+
+Plotted 2 cluster averages:
+
+```{r}
+Data <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    filter(individual_id != "d") %>%
+    select(tissue, del_size)
+
+k_values <- 2:10
+sil_scores <- sapply(unique(Data$tissue), function(Tissue) {
+           sapply(k_values, function(k) {
+                    km <- kmeans(data.frame(filter(Data, tissue == Tissue) %>% pull(del_size) %>% log10()),
+                                 centers = k, nstart = 25)
+                    ss <- cluster::silhouette(km$cluster, dist(filter(Data, tissue == Tissue) %>% pull(del_size) %>% log10()))
+                    mean(ss[, 3])  # Average silhouette width
+            })
+})
+rownames(sil_scores) <- k_values
+n_clust <- tibble(tissue = names(sapply(as.data.frame(sil_scores), function(x) k_values[which.max(x)])),
+                  n_clust = sapply(as.data.frame(sil_scores), function(x) k_values[which.max(x)]))
+
+Data <- left_join(Data, n_clust, by = join_by(tissue))
+
+
+Data_lst <- split(Data, Data$tissue)
+
+Data2 <- lapply(Data_lst, function(x) {
+    k_clust <- as.character(kmeans(data.frame(del_size = log10(x$del_size)), centers = x$n_clust[1], nstart = 25)$cluster)
+    x$classification <- k_clust
+    return(x)
+}) %>% Reduce("bind_rows", .)
+
+delBoxPlot_multimodal <- Data2 %>%
+    ggplot(aes(x = tissue, y = del_size)) +
+    geom_violin() +
+    stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.5, fatten = 1.5, color = "black") +
+    stat_summary(aes(group = classification), fun = mean, geom = "crossbar", 
+               width = 0.5, fatten = 1.5, color = "Tomato") +
+    scale_y_log10()
+
+delBoxPlot_multimodal
+invisible(svg("./Figs/deletion_size_violin_plot_multimodal.svg", height = 6, width = 12))
+delBoxPlot_multimodal
+invisible(dev.off())
+```
 
 ```{r}
 Del %>%
@@ -640,35 +766,41 @@ Del %>%
                          del_end + (16569 - del_start))) %>%
     filter(del_size >= 100) %>%
     left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-    mutate(log10_del_size = log10(del_size)) %>%
-    filter(!is.infinite(log10_del_size)) %>%
-    compare_means(formula = log10_del_size ~ tissue, data = ., comparisons = my_comparisons, label = "p.signif") %>%
+    kruskal.test(formula = del_size ~ tissue, data = .)
+
+Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    compare_means(formula = del_size ~ tissue, data = ., comparisons = my_comparisons, label = "p.signif") %>%
     mutate(p = formatC(p, digits = 3, format = "g", flag = "#"),
            p.adj = formatC(p.adj, digits = 3, format = "g", flag = "#")) %>%
     kable(caption = "Pairwise tests average deletion size across tissues") %>% 
     kable_styling(bootstrap_options = "striped", full_width = FALSE)
+
+signif_del <- Del %>%
+    mutate(del_size = ifelse(del_start <= del_end, 
+                         del_end - del_start, 
+                         del_end + (16569 - del_start))) %>%
+    filter(del_size >= 100) %>%
+    left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
+    compare_means(formula = del_size ~ tissue, data = ., comparisons = my_comparisons, label = "p.signif") %>%
+    select(group1, group2, p.adj) %>%
+    pivot_wider(names_from = "group1", values_from = "p.adj") %>%
+    as.data.frame()
+rownames(signif_del) <- signif_del$group2
+signif_del <- signif_del[-1]
+signif_del[signif_del >= 0.05] <- NA
+
+pheatmap::pheatmap(signif_del, cluster_rows = FALSE, cluster_cols = FALSE,
+                   display_numbers = TRUE,
+                   number_format = "%.2e",
+                   color = colorRampPalette(c("red", "white", "blue"))(100),
+                   angle_col = 45)
 ```
 
-Also with a linear model:
-
-```{r}
-lm(formula = log10_del_size ~ tissue + read_length, data = 
-    Del %>%
-        mutate(del_size = ifelse(del_start <= del_end, 
-                             del_end - del_start, 
-                             del_end + (16569 - del_start))) %>%
-        filter(del_size >= 100) %>%
-        left_join(Metadata %>% select(sample_id, individual_id, tissue), by = join_by(sample_id)) %>%
-        mutate(log10_del_size = log10(del_size)) %>%
-        filter(!is.infinite(log10_del_size))) %>%
-    broom::tidy() %>%
-    mutate(estimate = formatC(estimate, digits = 3, format = "g", flag = "#"),
-           std.error = formatC(std.error, digits = 3, format = "g", flag = "#"),
-           statistic = formatC(statistic, digits = 3, format = "g", flag = "#"),
-           p.value = formatC(p.value, digits = 3, format = "g", flag = "#")) %>%
-    kable(caption = "Linear model comparing deletion size across tissues") %>% 
-    kable_styling(bootstrap_options = "striped", full_width = FALSE)
-```
 
 ### Deletion events per molecule
 
